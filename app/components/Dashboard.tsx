@@ -23,18 +23,24 @@ interface Props {
 }
 
 const AI_MODELS = [
-  "gemini-2.0-flash-lite",
+  "gemini-2.5-flash",
   "gemini-2.0-flash",
-  "gemini-1.5-flash-8b",
+  "gemini-2.0-flash-lite",
+  "gemini-flash-latest",
   "gemini-1.5-flash",
 ];
 
-const isQuotaError = (msg: string) =>
+const isRetryableError = (msg: string) =>
   msg.includes("429") ||
   msg.includes("quota") ||
   msg.includes("Quota") ||
   msg.includes("RESOURCE_EXHAUSTED") ||
-  msg.includes("prepayment credits");
+  msg.includes("prepayment credits") ||
+  msg.includes("404") ||
+  msg.includes("not found") ||
+  msg.includes("not supported") ||
+  msg.includes("500") ||
+  msg.includes("503");
 
 const PROMPT = `จงอ่านภาพใบแจ้งยอดขายสินค้าออนไลน์ และคืนค่าเป็น JSON เท่านั้น (ไม่ต้องมีข้อความอื่น) ที่ประกอบด้วย:
 {
@@ -120,16 +126,16 @@ export default function Dashboard({ apiKey, onClearKey }: Props) {
         lastError = err;
         const msg = err instanceof Error ? err.message : "";
         if (msg.includes("API_KEY_INVALID") || msg.includes("API key not valid")) break;
-        if (!isQuotaError(msg)) break;
+        if (!isRetryableError(msg)) break;
       }
     }
 
     const msg = lastError instanceof Error ? lastError.message : "เกิดข้อผิดพลาดที่ไม่ทราบสาเหตุ";
     if (msg.includes("API_KEY_INVALID") || msg.includes("API key not valid")) {
       setError("API Key ไม่ถูกต้อง กรุณาตรวจสอบและอัปเดตใน Settings");
-    } else if (isQuotaError(msg)) {
+    } else if (isRetryableError(msg)) {
       setError(
-        `โควต้าหมดทุกโมเดล (${AI_MODELS.join(", ")}) — กรุณารอสักครู่ เปลี่ยน API key หรือเปิด billing ใน Google AI Studio`,
+        `ลองทุกโมเดลแล้วไม่สำเร็จ (${AI_MODELS.join(", ")}) — โควต้าหมดหรือโมเดลไม่พร้อมใช้งาน กรุณารอสักครู่ เปลี่ยน API key หรือเปิด billing ใน Google AI Studio`,
       );
     } else {
       setError(`วิเคราะห์ไม่สำเร็จ: ${msg}`);
