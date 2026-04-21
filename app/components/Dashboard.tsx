@@ -22,7 +22,19 @@ interface Props {
   onClearKey: () => void;
 }
 
-const AI_MODEL = "gemini-2.0-flash-lite";
+const AI_MODELS = [
+  "gemini-2.0-flash-lite",
+  "gemini-2.0-flash",
+  "gemini-1.5-flash-8b",
+  "gemini-1.5-flash",
+];
+
+const isQuotaError = (msg: string) =>
+  msg.includes("429") ||
+  msg.includes("quota") ||
+  msg.includes("Quota") ||
+  msg.includes("RESOURCE_EXHAUSTED") ||
+  msg.includes("prepayment credits");
 
 const PROMPT = `จงอ่านภาพใบแจ้งยอดขายสินค้าออนไลน์ และคืนค่าเป็น JSON เท่านั้น (ไม่ต้องมีข้อความอื่น) ที่ประกอบด้วย:
 {
@@ -42,6 +54,7 @@ export default function Dashboard({ apiKey, onClearKey }: Props) {
   const [result, setResult] = useState<AnalysisResult | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [showSettings, setShowSettings] = useState(false);
+  const [activeModel, setActiveModel] = useState<string>(AI_MODELS[0]);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const processFile = (file: File) => {
@@ -79,36 +92,49 @@ export default function Dashboard({ apiKey, onClearKey }: Props) {
     setError(null);
     setResult(null);
 
-    try {
-      const genAI = new GoogleGenerativeAI(apiKey);
-      const model = genAI.getGenerativeModel({ model: AI_MODEL });
+    const genAI = new GoogleGenerativeAI(apiKey);
+    const imagePart = {
+      inlineData: {
+        data: imageData.base64,
+        mimeType: imageData.mimeType,
+      },
+    };
 
-      const imagePart = {
-        inlineData: {
-          data: imageData.base64,
-          mimeType: imageData.mimeType,
-        },
-      };
+    let lastError: unknown = null;
 
-      const response = await model.generateContent([PROMPT, imagePart]);
-      const text = response.response.text();
+    for (const modelName of AI_MODELS) {
+      try {
+        setActiveModel(modelName);
+        const model = genAI.getGenerativeModel({ model: modelName });
+        const response = await model.generateContent([PROMPT, imagePart]);
+        const text = response.response.text();
 
-      // Extract JSON from response
-      const jsonMatch = text.match(/\{[\s\S]*\}/);
-      if (!jsonMatch) throw new Error("ไม่พบข้อมูล JSON ในผลลัพธ์");
+        const jsonMatch = text.match(/\{[\s\S]*\}/);
+        if (!jsonMatch) throw new Error("ไม่พบข้อมูล JSON ในผลลัพธ์");
 
-      const parsed: AnalysisResult = JSON.parse(jsonMatch[0]);
-      setResult(parsed);
-    } catch (err: unknown) {
-      const msg = err instanceof Error ? err.message : "เกิดข้อผิดพลาดที่ไม่ทราบสาเหตุ";
-      if (msg.includes("API_KEY_INVALID") || msg.includes("API key")) {
-        setError("API Key ไม่ถูกต้อง กรุณาตรวจสอบและอัปเดตใน Settings");
-      } else {
-        setError(`วิเคราะห์ไม่สำเร็จ: ${msg}`);
+        const parsed: AnalysisResult = JSON.parse(jsonMatch[0]);
+        setResult(parsed);
+        setLoading(false);
+        return;
+      } catch (err: unknown) {
+        lastError = err;
+        const msg = err instanceof Error ? err.message : "";
+        if (msg.includes("API_KEY_INVALID") || msg.includes("API key not valid")) break;
+        if (!isQuotaError(msg)) break;
       }
-    } finally {
-      setLoading(false);
     }
+
+    const msg = lastError instanceof Error ? lastError.message : "เกิดข้อผิดพลาดที่ไม่ทราบสาเหตุ";
+    if (msg.includes("API_KEY_INVALID") || msg.includes("API key not valid")) {
+      setError("API Key ไม่ถูกต้อง กรุณาตรวจสอบและอัปเดตใน Settings");
+    } else if (isQuotaError(msg)) {
+      setError(
+        `โควต้าหมดทุกโมเดล (${AI_MODELS.join(", ")}) — กรุณารอสักครู่ เปลี่ยน API key หรือเปิด billing ใน Google AI Studio`,
+      );
+    } else {
+      setError(`วิเคราะห์ไม่สำเร็จ: ${msg}`);
+    }
+    setLoading(false);
   };
 
   const fmt = (n: number) =>
@@ -139,7 +165,7 @@ export default function Dashboard({ apiKey, onClearKey }: Props) {
               border: "1px solid var(--border-warm)",
             }}
           >
-            Powered by {AI_MODEL}
+            Powered by {activeModel}
           </span>
           <button
           onClick={() => setShowSettings(true)}
@@ -236,7 +262,7 @@ export default function Dashboard({ apiKey, onClearKey }: Props) {
           <div className="flex items-center justify-center gap-3 py-6">
             <Loader2 size={20} className="animate-spin" style={{ color: "var(--terracotta)" }} />
             <span className="text-sm" style={{ color: "var(--olive-gray)" }}>
-              กำลังวิเคราะห์ด้วย {AI_MODEL}...
+              กำลังวิเคราะห์ด้วย {activeModel}...
             </span>
           </div>
         )}
