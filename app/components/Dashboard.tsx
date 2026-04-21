@@ -22,6 +22,8 @@ interface Props {
   onClearKey: () => void;
 }
 
+const AI_MODEL = "gemini-2.0-flash-lite";
+
 const PROMPT = `จงอ่านภาพใบแจ้งยอดขายสินค้าออนไลน์ และคืนค่าเป็น JSON เท่านั้น (ไม่ต้องมีข้อความอื่น) ที่ประกอบด้วย:
 {
   "grossSales": <ยอดขายรวมก่อนหัก เป็นตัวเลข>,
@@ -79,7 +81,7 @@ export default function Dashboard({ apiKey, onClearKey }: Props) {
 
     try {
       const genAI = new GoogleGenerativeAI(apiKey);
-      const model = genAI.getGenerativeModel({ model: "gemini-2.0-flash-lite" });
+      const model = genAI.getGenerativeModel({ model: AI_MODEL });
 
       const imagePart = {
         inlineData: {
@@ -128,7 +130,18 @@ export default function Dashboard({ apiKey, onClearKey }: Props) {
         >
           Claribill
         </h1>
-        <button
+        <div className="flex items-center gap-2">
+          <span
+            className="text-xs px-2 py-1 rounded-lg"
+            style={{
+              backgroundColor: "var(--warm-sand)",
+              color: "var(--stone-gray)",
+              border: "1px solid var(--border-warm)",
+            }}
+          >
+            Powered by {AI_MODEL}
+          </span>
+          <button
           onClick={() => setShowSettings(true)}
           className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm transition-colors hover:opacity-80"
           style={{
@@ -140,6 +153,7 @@ export default function Dashboard({ apiKey, onClearKey }: Props) {
           <Settings size={14} />
           Settings
         </button>
+        </div>
       </nav>
 
       <main className="max-w-3xl mx-auto px-4 py-10 space-y-8">
@@ -222,7 +236,7 @@ export default function Dashboard({ apiKey, onClearKey }: Props) {
           <div className="flex items-center justify-center gap-3 py-6">
             <Loader2 size={20} className="animate-spin" style={{ color: "var(--terracotta)" }} />
             <span className="text-sm" style={{ color: "var(--olive-gray)" }}>
-              กำลังวิเคราะห์ด้วย Gemini AI...
+              กำลังวิเคราะห์ด้วย {AI_MODEL}...
             </span>
           </div>
         )}
