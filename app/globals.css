@@ -20,4 +20,89 @@ body {
   background-color: var(--parchment);
   color: var(--near-black);
   font-family: Georgia, serif;
+  -webkit-tap-highlight-color: transparent;
+}
+
+@keyframes fadeIn {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+@keyframes slideUp {
+  from { opacity: 0; transform: translateY(12px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+@keyframes slideDown {
+  from { opacity: 0; transform: translateY(-8px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+@keyframes scaleIn {
+  from { opacity: 0; transform: scale(0.96); }
+  to { opacity: 1; transform: scale(1); }
+}
+
+@keyframes pulseSoft {
+  0%, 100% { transform: scale(1); opacity: 1; }
+  50% { transform: scale(1.04); opacity: 0.9; }
+}
+
+@keyframes shimmer {
+  0% { background-position: -200% 0; }
+  100% { background-position: 200% 0; }
+}
+
+@keyframes spin {
+  to { transform: rotate(360deg); }
+}
+
+@keyframes bounceIn {
+  0% { opacity: 0; transform: scale(0.6); }
+  60% { opacity: 1; transform: scale(1.08); }
+  100% { transform: scale(1); }
+}
+
+@keyframes barGrow {
+  from { width: 0%; }
+}
+
+.animate-fade-in { animation: fadeIn 0.4s ease-out both; }
+.animate-slide-up { animation: slideUp 0.5s cubic-bezier(0.2, 0.9, 0.3, 1) both; }
+.animate-slide-down { animation: slideDown 0.3s ease-out both; }
+.animate-scale-in { animation: scaleIn 0.35s cubic-bezier(0.2, 0.9, 0.3, 1) both; }
+.animate-pulse-soft { animation: pulseSoft 2.8s ease-in-out infinite; }
+.animate-bounce-in { animation: bounceIn 0.5s cubic-bezier(0.2, 1.4, 0.3, 1) both; }
+.animate-spin-slow { animation: spin 1.2s linear infinite; }
+.animate-bar-grow { animation: barGrow 0.8s cubic-bezier(0.2, 0.9, 0.3, 1) both; }
+
+.stagger-1 { animation-delay: 0.05s; }
+.stagger-2 { animation-delay: 0.12s; }
+.stagger-3 { animation-delay: 0.19s; }
+.stagger-4 { animation-delay: 0.26s; }
+
+.shimmer-bg {
+  background: linear-gradient(
+    90deg,
+    var(--warm-sand) 0%,
+    var(--ivory) 50%,
+    var(--warm-sand) 100%
+  );
+  background-size: 200% 100%;
+  animation: shimmer 1.6s linear infinite;
+}
+
+.press-shrink {
+  transition: transform 0.15s ease, opacity 0.15s ease;
+}
+.press-shrink:active {
+  transform: scale(0.97);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.001ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.001ms !important;
+  }
 }
