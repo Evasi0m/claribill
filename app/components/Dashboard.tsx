@@ -17,6 +17,9 @@ import {
   Check,
   ChevronDown,
   Sparkles,
+  TrendingUp,
+  Tag,
+  Package,
 } from "lucide-react";
 import SettingsModal from "./SettingsModal";
 import type { AnalysisResult } from "./types";
@@ -48,13 +51,23 @@ const isRetryableError = (msg: string) =>
 
 const PROMPT = `จงอ่านภาพใบแจ้งยอดขายสินค้าออนไลน์ และคืนค่าเป็น JSON เท่านั้น (ไม่ต้องมีข้อความอื่น) ที่ประกอบด้วย:
 {
-  "grossSales": <ยอดขายรวมก่อนหัก เป็นตัวเลข>,
-  "totalFees": <ยอดรวมค่าธรรมเนียมทั้งหมด เป็นตัวเลข>,
-  "netAmount": <ยอดเงินสุทธิ เป็นตัวเลข>,
+  "labelPrice": <ยอดรวมสินค้าก่อนหักส่วนลด (ราคาป้ายเต็ม) เป็นตัวเลข — หาบรรทัดที่เขียนว่า "ยอดรวมสินค้าก่อนหักส่วนลด" หรือคำใกล้เคียง หากไม่มีให้ใช้ค่าเดียวกับ grossSales>,
+  "grossSales": <ยอดขายหลังหักส่วนลดจากผู้ขาย (ยอดที่ลูกค้าจ่ายจริงก่อนหักค่าธรรมเนียม) เป็นตัวเลข>,
+  "totalFees": <ยอดรวมค่าธรรมเนียมทั้งหมด เป็นตัวเลข บวกเสมอ (ไม่ติดลบ)>,
+  "netAmount": <ยอดเงินสุทธิที่ผู้ขายได้รับหลังหักค่าธรรมเนียม เป็นตัวเลข>,
   "feeItems": [
-    { "name": <ชื่อรายการ>, "amount": <จำนวนเงิน เป็นตัวเลข>, "percentage": <เปอร์เซ็นต์เมื่อเทียบกับยอดขาย เป็นตัวเลข> }
+    { "name": <ชื่อรายการ>, "amount": <จำนวนเงิน เป็นตัวเลข บวกเสมอ>, "percentage": <เปอร์เซ็นต์เมื่อเทียบกับ grossSales เป็นตัวเลข> }
   ]
 }`;
+
+const COST_RATE_KEY = "CLARIBILL_COST_RATE";
+const DEFAULT_COST_RATE = 58;
+
+function loadCostRate(): number {
+  if (typeof window === "undefined") return DEFAULT_COST_RATE;
+  const v = Number(localStorage.getItem(COST_RATE_KEY));
+  return Number.isFinite(v) && v > 0 && v < 100 ? v : DEFAULT_COST_RATE;
+}
 
 export default function Dashboard({ apiKey, onClearKey }: Props) {
   const [dragging, setDragging] = useState(false);
@@ -65,7 +78,17 @@ export default function Dashboard({ apiKey, onClearKey }: Props) {
   const [error, setError] = useState<string | null>(null);
   const [showSettings, setShowSettings] = useState(false);
   const [activeModel, setActiveModel] = useState<string>(AI_MODELS[0]);
+  const [costRate, setCostRate] = useState<number>(DEFAULT_COST_RATE);
   const fileInputRef = useRef<HTMLInputElement>(null);
+
+  useEffect(() => {
+    setCostRate(loadCostRate());
+  }, []);
+
+  const handleCostRateChange = (v: number) => {
+    setCostRate(v);
+    localStorage.setItem(COST_RATE_KEY, String(v));
+  };
 
   const processFile = (file: File) => {
     if (!file.type.startsWith("image/")) {
@@ -315,11 +338,16 @@ export default function Dashboard({ apiKey, onClearKey }: Props) {
         {error && <ErrorPanel message={error} />}
 
         {/* Results */}
-        {result && <AnalysisDisplay result={result} fmt={fmt} />}
+        {result && <AnalysisDisplay result={result} fmt={fmt} costRate={costRate} />}
       </main>
 
       {showSettings && (
-        <SettingsModal onClose={() => setShowSettings(false)} onClearKey={onClearKey} />
+        <SettingsModal
+          onClose={() => setShowSettings(false)}
+          onClearKey={onClearKey}
+          costRate={costRate}
+          onCostRateChange={handleCostRateChange}
+        />
       )}
     </div>
   );
@@ -454,11 +482,20 @@ function ErrorPanel({ message }: { message: string }) {
 function AnalysisDisplay({
   result,
   fmt,
+  costRate,
 }: {
   result: AnalysisResult;
   fmt: (n: number) => string;
+  costRate: number;
 }) {
   const feeRate = result.grossSales > 0 ? (result.totalFees / result.grossSales) * 100 : 0;
+
+  // Profit: cost = labelPrice × (1 − costRate%). Profit = netAmount − cost.
+  const labelPrice = result.labelPrice ?? result.grossSales;
+  const cost = labelPrice * (1 - costRate / 100);
+  const profit = result.netAmount - cost;
+  const marginPct = labelPrice > 0 ? (profit / labelPrice) * 100 : 0;
+  const profitPositive = profit >= 0;
 
   return (
     <div className="space-y-5 sm:space-y-6">
@@ -495,6 +532,18 @@ function AnalysisDisplay({
           />
         </div>
       </div>
+
+      {/* Profit Panel */}
+      <ProfitPanel
+        labelPrice={labelPrice}
+        cost={cost}
+        netAmount={result.netAmount}
+        profit={profit}
+        marginPct={marginPct}
+        costRate={costRate}
+        positive={profitPositive}
+        fmt={fmt}
+      />
 
       {/* Fee Breakdown */}
       {result.feeItems && result.feeItems.length > 0 && (
@@ -678,5 +727,157 @@ function PercentBar({ value }: { value: number }) {
         {value.toFixed(2)}%
       </span>
     </div>
+  );
+}
+
+function ProfitPanel({
+  labelPrice,
+  cost,
+  netAmount,
+  profit,
+  marginPct,
+  costRate,
+  positive,
+  fmt,
+}: {
+  labelPrice: number;
+  cost: number;
+  netAmount: number;
+  profit: number;
+  marginPct: number;
+  costRate: number;
+  positive: boolean;
+  fmt: (n: number) => string;
+}) {
+  const accentColor = positive ? "var(--success)" : "var(--danger)";
+  const accentBg = positive
+    ? "color-mix(in oklab, var(--success) 12%, transparent)"
+    : "color-mix(in oklab, var(--danger) 12%, transparent)";
+
+  return (
+    <div className="glass overflow-hidden animate-slide-up stagger-4">
+      {/* Header */}
+      <div
+        className="flex items-center gap-2 px-4 sm:px-5 py-3.5"
+        style={{ borderBottom: "1px solid color-mix(in oklab, var(--border-cream) 80%, transparent)" }}
+      >
+        <div
+          className="control-icon shrink-0"
+          style={{
+            width: 28,
+            height: 28,
+            backgroundColor: accentBg,
+            color: accentColor,
+          }}
+        >
+          <TrendingUp size={14} />
+        </div>
+        <h2
+          className="text-sm sm:text-base font-medium"
+          style={{ fontFamily: "Georgia, serif", color: "var(--near-black)" }}
+        >
+          กำไรโดยประมาณ
+        </h2>
+        <span
+          className="ml-auto text-[11px] px-2 py-0.5 rounded-full"
+          style={{
+            backgroundColor: "color-mix(in oklab, var(--warm-sand) 70%, transparent)",
+            color: "var(--stone-gray)",
+            border: "1px solid color-mix(in oklab, var(--border-warm) 80%, transparent)",
+          }}
+        >
+          ต้นทุน −{costRate}%
+        </span>
+      </div>
+
+      {/* Big profit number */}
+      <div className="px-4 sm:px-5 pt-4 pb-3">
+        <p className="text-xs" style={{ color: "var(--stone-gray)" }}>
+          กำไรสุทธิ
+        </p>
+        <p
+          className="text-2xl sm:text-3xl font-medium mt-0.5 break-words animate-bounce-in"
+          style={{
+            fontFamily: "Georgia, serif",
+            color: accentColor,
+            overflowWrap: "anywhere",
+          }}
+        >
+          {profit >= 0 ? "฿" : "−฿"}
+          {fmt(Math.abs(profit))}
+        </p>
+        <p className="text-xs mt-1" style={{ color: "var(--stone-gray)" }}>
+          อัตรากำไร {marginPct.toFixed(2)}% ของราคาป้าย
+        </p>
+      </div>
+
+      {/* Breakdown rows */}
+      <ul
+        className="divide-y"
+        style={{ borderColor: "color-mix(in oklab, var(--border-cream) 80%, transparent)" }}
+      >
+        <ProfitRow
+          icon={<Tag size={13} />}
+          iconColor="var(--info)"
+          iconBg="color-mix(in oklab, var(--info) 15%, transparent)"
+          label="ราคาป้าย"
+          value={`฿${fmt(labelPrice)}`}
+        />
+        <ProfitRow
+          icon={<Package size={13} />}
+          iconColor="var(--charcoal-warm)"
+          iconBg="color-mix(in oklab, var(--warm-sand) 80%, transparent)"
+          label={`ต้นทุน (ราคาป้าย − ${costRate}%)`}
+          value={`−฿${fmt(cost)}`}
+          valueColor="var(--charcoal-warm)"
+        />
+        <ProfitRow
+          icon={<Wallet size={13} />}
+          iconColor="var(--terracotta)"
+          iconBg="color-mix(in oklab, var(--terracotta) 12%, transparent)"
+          label="ยอดสุทธิรับเข้า"
+          value={`฿${fmt(netAmount)}`}
+        />
+      </ul>
+    </div>
+  );
+}
+
+function ProfitRow({
+  icon,
+  iconColor,
+  iconBg,
+  label,
+  value,
+  valueColor,
+}: {
+  icon: React.ReactNode;
+  iconColor: string;
+  iconBg: string;
+  label: string;
+  value: string;
+  valueColor?: string;
+}) {
+  return (
+    <li className="flex items-center gap-3 px-4 sm:px-5 py-2.5 animate-fade-in">
+      <div
+        className="control-icon shrink-0"
+        style={{ width: 26, height: 26, backgroundColor: iconBg, color: iconColor }}
+      >
+        {icon}
+      </div>
+      <span
+        className="text-sm min-w-0 flex-1"
+        style={{ color: "var(--charcoal-warm)", overflowWrap: "anywhere" }}
+      >
+        {label}
+      </span>
+      <span
+        className="text-sm font-medium shrink-0"
+        style={{ color: valueColor ?? "var(--near-black)" }}
+      >
+        {value}
+      </span>
+    </li>
   );
 }

@@ -5,6 +5,8 @@ export interface FeeItem {
 }
 
 export interface AnalysisResult {
+  /** ยอดรวมสินค้าก่อนหักส่วนลด (ราคาป้าย) */
+  labelPrice?: number;
   grossSales: number;
   totalFees: number;
   netAmount: number;
