@@ -13,7 +13,9 @@ export default function ClaribillApp() {
   const [ready, setReady] = useState(false);
 
   useEffect(() => {
+    // Hydrate from localStorage after mount (SSR-safe) — intentional setState-in-effect
     const stored = localStorage.getItem(STORAGE_KEY);
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     setApiKey(stored);
     setReady(true);
   }, []);

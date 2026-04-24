@@ -1,6 +1,7 @@
 @import "tailwindcss";
 
 :root {
+  /* Light theme (default) — parchment canvas */
   --parchment: #f5f4ed;
   --ivory: #faf9f5;
   --near-black: #141413;
@@ -19,6 +20,14 @@
   --success: #1f7a38;
   --info: #3898ec;
 
+  /* Semantic aliases — theme-aware */
+  --surface: var(--ivory);          /* card surface */
+  --surface-2: var(--warm-sand);    /* muted surface */
+  --text-primary: var(--near-black);
+  --text-secondary: var(--olive-gray);
+  --text-tertiary: var(--stone-gray);
+  --border-soft: var(--border-cream);
+
   /* Unified radius — used on EVERYTHING */
   --radius: 18px;
   --radius-pill: 999px;
@@ -28,6 +37,35 @@
   --control-h-sm: 36px;   /* compact chip/icon */
   --control-px: 16px;
   --control-px-sm: 12px;
+}
+
+/* ==========================================================================
+   Dark theme — tokens from DESIGN.md (warm, never cool)
+   Page: Near Black #141413 · Surface: Dark Surface #30302e
+   Text: Ivory headings · Warm Silver body
+   ========================================================================== */
+
+[data-theme="dark"] {
+  --parchment: #141413;          /* page bg */
+  --ivory: #30302e;              /* primary card surface */
+  --near-black: #faf9f5;         /* primary text (inverted semantics) */
+  --warm-sand: #3d3d3a;          /* muted surface */
+  --border-cream: #30302e;       /* soft borders */
+  --border-warm: #3d3d3a;        /* prominent borders */
+  --charcoal-warm: #e8e6dc;      /* "dark-on-light text" becomes light-on-dark */
+  --olive-gray: #b0aea5;         /* secondary */
+  --stone-gray: #87867f;         /* tertiary — unchanged, works on both */
+  --dark-surface: #1e1e1c;       /* even deeper */
+  --warm-silver: #b0aea5;
+
+  --surface: #30302e;
+  --surface-2: #3d3d3a;
+  --text-primary: #faf9f5;
+  --text-secondary: #b0aea5;
+  --text-tertiary: #87867f;
+  --border-soft: #3d3d3a;
+
+  color-scheme: dark;
 }
 
 body {

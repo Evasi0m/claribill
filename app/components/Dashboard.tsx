@@ -22,9 +22,42 @@ import {
   Tag,
   Package,
   Layers,
+  History as HistoryIcon,
+  Download,
+  FileImage,
+  Pencil,
+  Store,
+  Save,
 } from "lucide-react";
 import SettingsModal from "./SettingsModal";
-import type { AnalysisResult, FeeItem } from "./types";
+import HistoryModal from "./HistoryModal";
+import type { AnalysisResult, FeeItem, HistoryEntry, Platform } from "./types";
+import {
+  loadPlatformRates,
+  savePlatformRates,
+  loadTheme,
+  saveTheme,
+  applyTheme,
+  loadHistory,
+  addHistory,
+  updateHistory,
+  removeHistory,
+  clearHistory,
+  newHistoryId,
+  type Theme,
+} from "../lib/storage";
+import {
+  PLATFORM_LABELS,
+  PLATFORM_COLORS,
+  rateFor,
+  type PlatformRates,
+} from "../lib/platform";
+import {
+  resultToCsv,
+  downloadFile,
+  exportNodeAsPng,
+  todayFilename,
+} from "../lib/export";
 
 interface Props {
   apiKey: string;
@@ -53,6 +86,7 @@ const isRetryableError = (msg: string) =>
 
 const PROMPT = `จงอ่านภาพใบแจ้งยอดขายสินค้าออนไลน์ และคืนค่าเป็น JSON เท่านั้น (ไม่ต้องมีข้อความอื่น) ที่ประกอบด้วย:
 {
+  "platform": <ชื่อแพลตฟอร์มที่ตรวจจับได้จากโลโก้/ชื่อ/สีของบิล: "shopee" | "lazada" | "tiktok" | "other" — หาไม่เจอให้ใส่ "other">,
   "labelPrice": <ยอดรวมสินค้าก่อนหักส่วนลด (ราคาป้ายเต็ม) เป็นตัวเลข — หาบรรทัดที่เขียนว่า "ยอดรวมสินค้าก่อนหักส่วนลด" หรือคำใกล้เคียง หากไม่มีให้ใช้ค่าเดียวกับ grossSales>,
   "grossSales": <ยอดขายหลังหักส่วนลดจากผู้ขาย (ยอดที่ลูกค้าจ่ายจริงก่อนหักค่าธรรมเนียม) เป็นตัวเลข>,
   "totalFees": <ยอดรวมค่าธรรมเนียมทั้งหมด เป็นตัวเลข บวกเสมอ (ไม่ติดลบ)>,
@@ -62,15 +96,6 @@ const PROMPT = `จงอ่านภาพใบแจ้งยอดขาย�
   ]
 }`;
 
-const COST_RATE_KEY = "CLARIBILL_COST_RATE";
-const DEFAULT_COST_RATE = 58;
-
-function loadCostRate(): number {
-  if (typeof window === "undefined") return DEFAULT_COST_RATE;
-  const v = Number(localStorage.getItem(COST_RATE_KEY));
-  return Number.isFinite(v) && v > 0 && v < 100 ? v : DEFAULT_COST_RATE;
-}
-
 type UploadedImage = {
   id: string;
   preview: string;
@@ -79,22 +104,44 @@ type UploadedImage = {
 };
 
 function aggregate(results: AnalysisResult[]): AnalysisResult {
-  const sum = (key: keyof Pick<AnalysisResult, "labelPrice" | "grossSales" | "totalFees" | "netAmount">) =>
-    results.reduce((acc, r) => acc + (Number(r[key]) || 0), 0);
+  const sum = (
+    key: keyof Pick<AnalysisResult, "labelPrice" | "grossSales" | "totalFees" | "netAmount">,
+  ) => results.reduce((acc, r) => acc + (Number(r[key]) || 0), 0);
 
   const labelPrice = sum("labelPrice") || sum("grossSales");
   const grossSales = sum("grossSales");
   const totalFees = sum("totalFees");
   const netAmount = sum("netAmount");
 
-  // Merge fee items by name; re-compute percentage off the combined grossSales.
+  // Detect dominant platform (most common non-`other` wins; fallback `other`)
+  const counts = new Map<Platform, number>();
+  for (const r of results) {
+    const p = (r.platform ?? "other") as Platform;
+    counts.set(p, (counts.get(p) ?? 0) + 1);
+  }
+  let platform: Platform = "other";
+  let best = -1;
+  for (const [p, c] of counts) {
+    if (p !== "other" && c > best) {
+      platform = p;
+      best = c;
+    }
+  }
+  if (best < 0 && counts.size > 0) platform = "other";
+
+  // Merge fee items by name; re-compute percentage off the combined grossSales
   const map = new Map<string, FeeItem>();
   for (const r of results) {
     for (const f of r.feeItems ?? []) {
       const key = f.name.trim();
       const prev = map.get(key);
       if (prev) prev.amount += Number(f.amount) || 0;
-      else map.set(key, { name: key, amount: Number(f.amount) || 0, percentage: 0 });
+      else
+        map.set(key, {
+          name: key,
+          amount: Number(f.amount) || 0,
+          percentage: 0,
+        });
     }
   }
   const feeItems = Array.from(map.values()).map((f) => ({
@@ -102,7 +149,17 @@ function aggregate(results: AnalysisResult[]): AnalysisResult {
     percentage: grossSales > 0 ? (f.amount / grossSales) * 100 : 0,
   }));
 
-  return { labelPrice, grossSales, totalFees, netAmount, feeItems };
+  return { labelPrice, grossSales, totalFees, netAmount, feeItems, platform };
+}
+
+function recomputePercentages(r: AnalysisResult): AnalysisResult {
+  return {
+    ...r,
+    feeItems: r.feeItems.map((f) => ({
+      ...f,
+      percentage: r.grossSales > 0 ? (f.amount / r.grossSales) * 100 : 0,
+    })),
+  };
 }
 
 export default function Dashboard({ apiKey, onClearKey }: Props) {
@@ -111,19 +168,40 @@ export default function Dashboard({ apiKey, onClearKey }: Props) {
   const [loading, setLoading] = useState(false);
   const [progress, setProgress] = useState<{ current: number; total: number } | null>(null);
   const [result, setResult] = useState<AnalysisResult | null>(null);
+  const [currentEntryId, setCurrentEntryId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [showSettings, setShowSettings] = useState(false);
+  const [showHistory, setShowHistory] = useState(false);
   const [activeModel, setActiveModel] = useState<string>(AI_MODELS[0]);
-  const [costRate, setCostRate] = useState<number>(DEFAULT_COST_RATE);
+  // Dashboard is loaded via dynamic({ ssr: false }) so localStorage is safe at init
+  const [platformRates, setPlatformRates] = useState<PlatformRates>(loadPlatformRates);
+  const [theme, setTheme] = useState<Theme>(loadTheme);
+  const [history, setHistory] = useState<HistoryEntry[]>(loadHistory);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const exportNodeRef = useRef<HTMLDivElement>(null);
 
+  // Apply theme to <html> element — side effect only, no state update
   useEffect(() => {
-    setCostRate(loadCostRate());
-  }, []);
+    applyTheme(theme);
+  }, [theme]);
 
-  const handleCostRateChange = (v: number) => {
-    setCostRate(v);
-    localStorage.setItem(COST_RATE_KEY, String(v));
+  const handlePlatformRatesChange = (r: PlatformRates) => {
+    setPlatformRates(r);
+    savePlatformRates(r);
+    // Re-derive cost/profit live when user tweaks — result view reads from state directly
+    if (result && currentEntryId) {
+      const costRate = rateFor(r, result.platform);
+      const cost = (result.labelPrice ?? result.grossSales) * (1 - costRate / 100);
+      const profit = result.netAmount - cost;
+      const next = updateHistory(currentEntryId, { costRate, profit });
+      setHistory(next);
+    }
+  };
+
+  const handleThemeChange = (t: Theme) => {
+    setTheme(t);
+    saveTheme(t);
+    applyTheme(t);
   };
 
   const addFiles = useCallback((files: FileList | File[]) => {
@@ -144,17 +222,51 @@ export default function Dashboard({ apiKey, onClearKey }: Props) {
       reader.readAsDataURL(file);
     });
     setResult(null);
+    setCurrentEntryId(null);
     setError(null);
   }, []);
+
+  // Paste from clipboard (Ctrl/Cmd+V) — grabs image(s) anywhere on the page
+  useEffect(() => {
+    const onPaste = (e: ClipboardEvent) => {
+      // Don't intercept when user is typing in an editable field
+      const t = e.target as HTMLElement | null;
+      if (
+        t &&
+        (t.tagName === "INPUT" ||
+          t.tagName === "TEXTAREA" ||
+          t.isContentEditable)
+      ) {
+        return;
+      }
+      const items = e.clipboardData?.items;
+      if (!items) return;
+      const files: File[] = [];
+      for (const it of Array.from(items)) {
+        if (it.kind === "file") {
+          const f = it.getAsFile();
+          if (f && f.type.startsWith("image/")) files.push(f);
+        }
+      }
+      if (files.length > 0) {
+        e.preventDefault();
+        addFiles(files);
+      }
+    };
+    window.addEventListener("paste", onPaste);
+    return () => window.removeEventListener("paste", onPaste);
+  }, [addFiles]);
 
   const removeImage = (id: string) => {
     setImages((prev) => prev.filter((i) => i.id !== id));
     setResult(null);
+    setCurrentEntryId(null);
   };
 
   const clearAllImages = () => {
     setImages([]);
     setResult(null);
+    setCurrentEntryId(null);
     setError(null);
   };
 
@@ -170,18 +282,40 @@ export default function Dashboard({ apiKey, onClearKey }: Props) {
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     if (e.target.files && e.target.files.length > 0) {
       addFiles(e.target.files);
-      // reset so selecting same file again still triggers change
       e.target.value = "";
     }
   };
 
   const openPicker = () => fileInputRef.current?.click();
 
+  const persistHistory = (res: AnalysisResult, imageCount: number) => {
+    const costRate = rateFor(platformRates, res.platform);
+    const cost = (res.labelPrice ?? res.grossSales) * (1 - costRate / 100);
+    const profit = res.netAmount - cost;
+    const d = new Date();
+    const pad = (n: number) => String(n).padStart(2, "0");
+    const datePart = `${pad(d.getDate())}/${pad(d.getMonth() + 1)} ${pad(d.getHours())}:${pad(d.getMinutes())}`;
+    const platformLabel = res.platform ? PLATFORM_LABELS[res.platform] : "บิล";
+    const entry: HistoryEntry = {
+      id: newHistoryId(),
+      createdAt: Date.now(),
+      title: `${platformLabel} • ${datePart}`,
+      result: res,
+      costRate,
+      profit,
+      imageCount,
+    };
+    const next = addHistory(entry);
+    setHistory(next);
+    setCurrentEntryId(entry.id);
+  };
+
   const handleAnalyze = async () => {
     if (images.length === 0) return;
     setLoading(true);
     setError(null);
     setResult(null);
+    setCurrentEntryId(null);
     setProgress({ current: 0, total: images.length });
 
     const genAI = new GoogleGenerativeAI(apiKey);
@@ -203,7 +337,8 @@ export default function Dashboard({ apiKey, onClearKey }: Props) {
         } catch (err: unknown) {
           lastError = err;
           const msg = err instanceof Error ? err.message : "";
-          if (msg.includes("API_KEY_INVALID") || msg.includes("API key not valid")) throw err;
+          if (msg.includes("API_KEY_INVALID") || msg.includes("API key not valid"))
+            throw err;
           if (!isRetryableError(msg)) throw err;
         }
       }
@@ -217,7 +352,9 @@ export default function Dashboard({ apiKey, onClearKey }: Props) {
         const r = await analyzeOne(images[i]);
         all.push(r);
       }
-      setResult(aggregate(all));
+      const agg = aggregate(all);
+      setResult(agg);
+      persistHistory(agg, images.length);
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : "เกิดข้อผิดพลาดที่ไม่ทราบสาเหตุ";
       if (msg.includes("API_KEY_INVALID") || msg.includes("API key not valid")) {
@@ -236,7 +373,128 @@ export default function Dashboard({ apiKey, onClearKey }: Props) {
   };
 
   const fmt = (n: number) =>
-    new Intl.NumberFormat("th-TH", { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(n);
+    new Intl.NumberFormat("th-TH", {
+      minimumFractionDigits: 2,
+      maximumFractionDigits: 2,
+    }).format(n);
+
+  /* ------------- edit handlers ------------- */
+
+  const updateResult = (patch: Partial<AnalysisResult>) => {
+    setResult((prev) => {
+      if (!prev) return prev;
+      const merged = recomputePercentages({ ...prev, ...patch });
+      if (currentEntryId) {
+        const costRate = rateFor(platformRates, merged.platform);
+        const cost = (merged.labelPrice ?? merged.grossSales) * (1 - costRate / 100);
+        const profit = merged.netAmount - cost;
+        const next = updateHistory(currentEntryId, {
+          result: merged,
+          costRate,
+          profit,
+        });
+        setHistory(next);
+      }
+      return merged;
+    });
+  };
+
+  const updateFeeItem = (index: number, patch: Partial<FeeItem>) => {
+    setResult((prev) => {
+      if (!prev) return prev;
+      const items = prev.feeItems.map((f, i) => (i === index ? { ...f, ...patch } : f));
+      // Recompute totalFees from items to keep things coherent
+      const totalFees = items.reduce((s, f) => s + (Number(f.amount) || 0), 0);
+      const merged = recomputePercentages({ ...prev, feeItems: items, totalFees });
+      if (currentEntryId) {
+        const costRate = rateFor(platformRates, merged.platform);
+        const cost = (merged.labelPrice ?? merged.grossSales) * (1 - costRate / 100);
+        const profit = merged.netAmount - cost;
+        const next = updateHistory(currentEntryId, {
+          result: merged,
+          costRate,
+          profit,
+        });
+        setHistory(next);
+      }
+      return merged;
+    });
+  };
+
+  const removeFeeItem = (index: number) => {
+    setResult((prev) => {
+      if (!prev) return prev;
+      const items = prev.feeItems.filter((_, i) => i !== index);
+      const totalFees = items.reduce((s, f) => s + (Number(f.amount) || 0), 0);
+      const merged = recomputePercentages({ ...prev, feeItems: items, totalFees });
+      if (currentEntryId) {
+        const costRate = rateFor(platformRates, merged.platform);
+        const cost = (merged.labelPrice ?? merged.grossSales) * (1 - costRate / 100);
+        const profit = merged.netAmount - cost;
+        const next = updateHistory(currentEntryId, {
+          result: merged,
+          costRate,
+          profit,
+        });
+        setHistory(next);
+      }
+      return merged;
+    });
+  };
+
+  const changePlatform = (p: Platform) => updateResult({ platform: p });
+
+  /* ------------- history handlers ------------- */
+
+  const openHistoryEntry = (entry: HistoryEntry) => {
+    setResult(entry.result);
+    setCurrentEntryId(entry.id);
+    setImages([]);
+    setError(null);
+    setShowHistory(false);
+  };
+
+  const deleteHistoryEntry = (id: string) => {
+    const next = removeHistory(id);
+    setHistory(next);
+    if (currentEntryId === id) {
+      setCurrentEntryId(null);
+    }
+  };
+
+  const clearAllHistory = () => {
+    clearHistory();
+    setHistory([]);
+    setCurrentEntryId(null);
+  };
+
+  /* ------------- export handlers ------------- */
+
+  const costRate = result ? rateFor(platformRates, result.platform) : 58;
+  const labelPrice = result ? (result.labelPrice ?? result.grossSales) : 0;
+  const cost = labelPrice * (1 - costRate / 100);
+  const profit = result ? result.netAmount - cost : 0;
+
+  const exportCsv = () => {
+    if (!result) return;
+    const entry = history.find((h) => h.id === currentEntryId);
+    const csv = resultToCsv(result, {
+      costRate,
+      profit,
+      title: entry?.title,
+      createdAt: entry?.createdAt,
+    });
+    downloadFile(todayFilename("claribill", "csv"), csv);
+  };
+
+  const exportPng = async () => {
+    if (!exportNodeRef.current) return;
+    try {
+      await exportNodeAsPng(exportNodeRef.current, todayFilename("claribill", "png"));
+    } catch (e) {
+      setError(`บันทึกรูปไม่สำเร็จ: ${e instanceof Error ? e.message : String(e)}`);
+    }
+  };
 
   return (
     <div className="min-h-screen relative" style={{ backgroundColor: "var(--parchment)" }}>
@@ -264,7 +522,7 @@ export default function Dashboard({ apiKey, onClearKey }: Props) {
         <div className="max-w-3xl mx-auto flex items-center justify-between gap-2">
           <h1
             className="text-lg sm:text-xl font-medium shrink-0 flex items-center gap-2"
-            style={{ fontFamily: "Georgia, serif", color: "var(--near-black)" }}
+            style={{ fontFamily: "Georgia, serif", color: "var(--text-primary)" }}
           >
             <span className="control-icon glass-primary" style={{ width: 32, height: 32 }}>
               <Sparkles size={14} />
@@ -274,7 +532,7 @@ export default function Dashboard({ apiKey, onClearKey }: Props) {
           <div className="flex items-center gap-2 min-w-0">
             <span
               className="control-sm glass-chip truncate max-w-[110px] sm:max-w-[200px]"
-              style={{ color: "var(--stone-gray)" }}
+              style={{ color: "var(--text-tertiary)" }}
               title={activeModel}
             >
               <span
@@ -283,6 +541,28 @@ export default function Dashboard({ apiKey, onClearKey }: Props) {
               />
               <span className="truncate">{activeModel}</span>
             </span>
+            <button
+              onClick={() => setShowHistory(true)}
+              aria-label="History"
+              className="control-icon glass-chip relative"
+              style={{ color: "var(--charcoal-warm)" }}
+            >
+              <HistoryIcon size={16} />
+              {history.length > 0 && (
+                <span
+                  className="absolute -top-1 -right-1 text-[9px] font-medium rounded-full flex items-center justify-center"
+                  style={{
+                    minWidth: 16,
+                    height: 16,
+                    padding: "0 4px",
+                    backgroundColor: "var(--terracotta)",
+                    color: "var(--ivory)",
+                  }}
+                >
+                  {history.length > 99 ? "99+" : history.length}
+                </span>
+              )}
+            </button>
             <button
               onClick={() => setShowSettings(true)}
               aria-label="Settings"
@@ -328,15 +608,45 @@ export default function Dashboard({ apiKey, onClearKey }: Props) {
         {error && <ErrorPanel message={error} />}
 
         {/* Results */}
-        {result && <AnalysisDisplay result={result} fmt={fmt} costRate={costRate} />}
+        {result && (
+          <div ref={exportNodeRef}>
+            <AnalysisDisplay
+              result={result}
+              fmt={fmt}
+              costRate={costRate}
+              labelPrice={labelPrice}
+              cost={cost}
+              profit={profit}
+              onUpdateResult={updateResult}
+              onUpdateFeeItem={updateFeeItem}
+              onRemoveFeeItem={removeFeeItem}
+              onChangePlatform={changePlatform}
+              onExportCsv={exportCsv}
+              onExportPng={exportPng}
+              saved={!!currentEntryId}
+            />
+          </div>
+        )}
       </main>
 
       {showSettings && (
         <SettingsModal
           onClose={() => setShowSettings(false)}
           onClearKey={onClearKey}
-          costRate={costRate}
-          onCostRateChange={handleCostRateChange}
+          platformRates={platformRates}
+          onPlatformRatesChange={handlePlatformRatesChange}
+          theme={theme}
+          onThemeChange={handleThemeChange}
+        />
+      )}
+
+      {showHistory && (
+        <HistoryModal
+          entries={history}
+          onClose={() => setShowHistory(false)}
+          onOpen={openHistoryEntry}
+          onDelete={deleteHistoryEntry}
+          onClearAll={clearAllHistory}
         />
       )}
     </div>
@@ -403,7 +713,6 @@ function UploadZone({
 
       {hasImages ? (
         <div className="p-3 sm:p-4 space-y-3 animate-fade-in">
-          {/* Thumbnail grid */}
           <div className="grid grid-cols-3 sm:grid-cols-4 gap-2 sm:gap-3">
             {images.map((img, i) => (
               <div
@@ -449,7 +758,6 @@ function UploadZone({
               </div>
             ))}
 
-            {/* Add more */}
             <button
               onClick={onPick}
               className="aspect-square flex flex-col items-center justify-center gap-1.5 press-shrink transition-all hover:scale-[1.02]"
@@ -457,7 +765,7 @@ function UploadZone({
                 borderRadius: "calc(var(--radius) - 4px)",
                 border: "2px dashed color-mix(in oklab, var(--border-warm) 80%, transparent)",
                 backgroundColor: "color-mix(in oklab, var(--ivory) 40%, transparent)",
-                color: "var(--olive-gray)",
+                color: "var(--text-secondary)",
               }}
               aria-label="เพิ่มรูป"
             >
@@ -468,10 +776,9 @@ function UploadZone({
             </button>
           </div>
 
-          {/* Status row */}
           <div
             className="flex items-center justify-between gap-2 px-1"
-            style={{ color: "var(--stone-gray)" }}
+            style={{ color: "var(--text-tertiary)" }}
           >
             <span className="text-xs flex items-center gap-1.5">
               <Layers size={12} />
@@ -505,15 +812,15 @@ function UploadZone({
           >
             <ImageIcon
               size={24}
-              style={{ color: dragging ? "var(--terracotta)" : "var(--olive-gray)" }}
+              style={{ color: dragging ? "var(--terracotta)" : "var(--text-secondary)" }}
             />
           </div>
           <div className="text-center">
             <p className="font-medium text-sm" style={{ color: "var(--charcoal-warm)" }}>
               {dragging ? "วางได้เลย!" : "แตะเพื่อเลือก หรือลากรูปมาวาง"}
             </p>
-            <p className="text-xs mt-1" style={{ color: "var(--stone-gray)" }}>
-              รองรับหลายรูป • JPG, PNG, WEBP
+            <p className="text-xs mt-1" style={{ color: "var(--text-tertiary)" }}>
+              รองรับหลายรูป • JPG, PNG, WEBP • วาง Ctrl+V ก็ได้
             </p>
           </div>
         </button>
@@ -546,7 +853,7 @@ function LoadingPanel({
               ? `กำลังวิเคราะห์ ${progress.current}/${progress.total}`
               : "กำลังวิเคราะห์..."}
           </p>
-          <p className="text-[11px] truncate" style={{ color: "var(--stone-gray)" }}>
+          <p className="text-[11px] truncate" style={{ color: "var(--text-tertiary)" }}>
             {modelName}
           </p>
         </div>
@@ -675,43 +982,96 @@ function ErrorPanel({ message }: { message: string }) {
 }
 
 /* ==========================================================================
-   Analysis display — bento grid + fee table
+   Analysis display — bento grid + fee table (with edit + export toolbar)
    ========================================================================== */
 
 function AnalysisDisplay({
   result,
   fmt,
   costRate,
+  labelPrice,
+  cost,
+  profit,
+  onUpdateResult,
+  onUpdateFeeItem,
+  onRemoveFeeItem,
+  onChangePlatform,
+  onExportCsv,
+  onExportPng,
+  saved,
 }: {
   result: AnalysisResult;
   fmt: (n: number) => string;
   costRate: number;
+  labelPrice: number;
+  cost: number;
+  profit: number;
+  onUpdateResult: (patch: Partial<AnalysisResult>) => void;
+  onUpdateFeeItem: (index: number, patch: Partial<FeeItem>) => void;
+  onRemoveFeeItem: (index: number) => void;
+  onChangePlatform: (p: Platform) => void;
+  onExportCsv: () => void;
+  onExportPng: () => void;
+  saved: boolean;
 }) {
   const feeRate = result.grossSales > 0 ? (result.totalFees / result.grossSales) * 100 : 0;
-  const labelPrice = result.labelPrice ?? result.grossSales;
-  const cost = labelPrice * (1 - costRate / 100);
-  const profit = result.netAmount - cost;
   const marginPct = labelPrice > 0 ? (profit / labelPrice) * 100 : 0;
   const profitPositive = profit >= 0;
   const profitColor = profitPositive ? "var(--success)" : "var(--danger)";
 
   return (
     <div className="space-y-5 sm:space-y-6">
+      {/* Toolbar */}
+      <div className="flex items-center gap-2 flex-wrap">
+        <PlatformPicker
+          value={result.platform ?? "other"}
+          onChange={onChangePlatform}
+        />
+        <div className="flex-1" />
+        {saved && (
+          <span
+            className="control-sm glass-chip"
+            style={{ color: "var(--success)" }}
+            title="บันทึกในประวัติอัตโนมัติ"
+          >
+            <Save size={12} />
+            บันทึกแล้ว
+          </span>
+        )}
+        <button
+          onClick={onExportCsv}
+          className="control-sm glass-chip"
+          style={{ color: "var(--charcoal-warm)" }}
+          aria-label="Export CSV"
+        >
+          <Download size={12} />
+          CSV
+        </button>
+        <button
+          onClick={onExportPng}
+          className="control-sm glass-chip"
+          style={{ color: "var(--charcoal-warm)" }}
+          aria-label="Export Image"
+        >
+          <FileImage size={12} />
+          รูปภาพ
+        </button>
+      </div>
+
       {/* Bento grid */}
       <div
         className="grid gap-3 sm:gap-4"
-        style={{
-          gridTemplateColumns: "repeat(4, minmax(0, 1fr))",
-        }}
+        style={{ gridTemplateColumns: "repeat(4, minmax(0, 1fr))" }}
       >
-        {/* Big — ยอดขายรวม (col-span 4 on mobile, 2 on desktop) */}
         <div className="col-span-4 sm:col-span-2 animate-slide-up stagger-1">
           <BigCard
             icon={<BarChart3 size={18} />}
             iconBg="color-mix(in oklab, var(--info) 18%, transparent)"
             iconColor="var(--info)"
             label="ยอดขายรวม"
-            value={`฿${fmt(result.grossSales)}`}
+            value={result.grossSales}
+            valuePrefix="฿"
+            onCommit={(v) => onUpdateResult({ grossSales: v })}
             sub={
               result.labelPrice && result.labelPrice !== result.grossSales
                 ? `ราคาป้าย ฿${fmt(result.labelPrice)}`
@@ -720,7 +1080,6 @@ function AnalysisDisplay({
           />
         </div>
 
-        {/* Big — กำไร */}
         <div className="col-span-4 sm:col-span-2 animate-slide-up stagger-2">
           <BigCard
             icon={<TrendingUp size={18} />}
@@ -731,52 +1090,252 @@ function AnalysisDisplay({
             }
             iconColor={profitColor}
             label="กำไรโดยประมาณ"
-            value={`${profitPositive ? "฿" : "−฿"}${fmt(Math.abs(profit))}`}
+            value={profit}
+            valuePrefix={profitPositive ? "฿" : "−฿"}
+            valueAbs
             valueColor={profitColor}
             sub={`${marginPct.toFixed(2)}% • ต้นทุน −${costRate}% = ฿${fmt(cost)}`}
+            readOnly
           />
         </div>
 
-        {/* Small — ค่าธรรมเนียม */}
         <div className="col-span-2 animate-slide-up stagger-3">
           <SmallCard
             icon={<TrendingDown size={16} />}
             iconBg="color-mix(in oklab, var(--danger) 15%, transparent)"
             iconColor="var(--danger)"
             label="ค่าธรรมเนียม"
-            value={`฿${fmt(result.totalFees)}`}
+            value={result.totalFees}
+            valuePrefix="฿"
             valueColor="var(--danger)"
             sub={`${feeRate.toFixed(2)}% ของยอดขาย`}
+            onCommit={(v) => onUpdateResult({ totalFees: v })}
           />
         </div>
 
-        {/* Small — ยอดสุทธิ (accent) */}
         <div className="col-span-2 animate-slide-up stagger-4">
           <SmallCard
             icon={<Wallet size={16} />}
             iconBg="rgba(255,255,255,0.1)"
             iconColor="var(--terracotta-2)"
             label="ยอดสุทธิ"
-            value={`฿${fmt(result.netAmount)}`}
+            value={result.netAmount}
+            valuePrefix="฿"
+            onCommit={(v) => onUpdateResult({ netAmount: v })}
             accent
           />
         </div>
       </div>
 
-      {/* Profit breakdown rows */}
+      {/* Profit breakdown */}
       <ProfitBreakdown
         labelPrice={labelPrice}
         cost={cost}
         netAmount={result.netAmount}
         costRate={costRate}
         fmt={fmt}
+        onEditLabelPrice={(v) => onUpdateResult({ labelPrice: v })}
       />
 
       {/* Fee Table */}
       {result.feeItems && result.feeItems.length > 0 && (
-        <FeeTable items={result.feeItems} grossSales={result.grossSales} fmt={fmt} />
+        <FeeTable
+          items={result.feeItems}
+          grossSales={result.grossSales}
+          fmt={fmt}
+          onEdit={onUpdateFeeItem}
+          onRemove={onRemoveFeeItem}
+        />
       )}
     </div>
+  );
+}
+
+/* ==========================================================================
+   Platform picker
+   ========================================================================== */
+
+function PlatformPicker({
+  value,
+  onChange,
+}: {
+  value: Platform;
+  onChange: (p: Platform) => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const options: Platform[] = ["shopee", "lazada", "tiktok", "other"];
+  return (
+    <div className="relative">
+      <button
+        onClick={() => setOpen((v) => !v)}
+        className="control-sm glass-chip"
+        style={{ color: "var(--charcoal-warm)" }}
+      >
+        <Store size={12} style={{ color: PLATFORM_COLORS[value] }} />
+        {PLATFORM_LABELS[value]}
+        <ChevronDown size={12} style={{ opacity: 0.6 }} />
+      </button>
+      {open && (
+        <>
+          <div
+            aria-hidden
+            className="fixed inset-0 z-20"
+            onClick={() => setOpen(false)}
+          />
+          <div
+            className="absolute top-full left-0 mt-1 z-30 glass-strong p-1 animate-slide-down"
+            style={{ minWidth: 150 }}
+          >
+            {options.map((p) => (
+              <button
+                key={p}
+                onClick={() => {
+                  onChange(p);
+                  setOpen(false);
+                }}
+                className="w-full text-left px-2.5 py-1.5 rounded-md text-sm flex items-center gap-2 hover:opacity-80"
+                style={{
+                  color: p === value ? "var(--terracotta)" : "var(--text-primary)",
+                  backgroundColor:
+                    p === value
+                      ? "color-mix(in oklab, var(--terracotta) 12%, transparent)"
+                      : "transparent",
+                  borderRadius: "calc(var(--radius) - 8px)",
+                }}
+              >
+                <span
+                  className="inline-block rounded-full"
+                  style={{
+                    width: 8,
+                    height: 8,
+                    backgroundColor: PLATFORM_COLORS[p],
+                  }}
+                />
+                {PLATFORM_LABELS[p]}
+                {p === value && <Check size={12} className="ml-auto" />}
+              </button>
+            ))}
+          </div>
+        </>
+      )}
+    </div>
+  );
+}
+
+/* ==========================================================================
+   Editable numeric value
+   ========================================================================== */
+
+function EditableNumber({
+  value,
+  valuePrefix = "",
+  valueAbs = false,
+  valueColor,
+  className,
+  style,
+  onCommit,
+  fmt,
+  readOnly,
+}: {
+  value: number;
+  valuePrefix?: string;
+  valueAbs?: boolean;
+  valueColor?: string;
+  className?: string;
+  style?: React.CSSProperties;
+  onCommit?: (n: number) => void;
+  fmt: (n: number) => string;
+  readOnly?: boolean;
+}) {
+  const [editing, setEditing] = useState(false);
+  const [draft, setDraft] = useState(String(value));
+  const inputRef = useRef<HTMLInputElement>(null);
+
+  useEffect(() => {
+    // Sync draft from parent when not actively editing
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    if (!editing) setDraft(String(value));
+  }, [value, editing]);
+
+  useEffect(() => {
+    if (editing) {
+      inputRef.current?.focus();
+      inputRef.current?.select();
+    }
+  }, [editing]);
+
+  const commit = () => {
+    const n = Number(draft);
+    if (Number.isFinite(n) && n >= 0) {
+      onCommit?.(n);
+    }
+    setEditing(false);
+  };
+
+  if (readOnly || !onCommit) {
+    return (
+      <span className={className} style={{ color: valueColor, ...style }}>
+        {valuePrefix}
+        {fmt(valueAbs ? Math.abs(value) : value)}
+      </span>
+    );
+  }
+
+  if (editing) {
+    return (
+      <input
+        ref={inputRef}
+        type="number"
+        inputMode="decimal"
+        step="0.01"
+        value={draft}
+        onChange={(e) => setDraft(e.target.value)}
+        onBlur={commit}
+        onKeyDown={(e) => {
+          if (e.key === "Enter") e.currentTarget.blur();
+          if (e.key === "Escape") {
+            setDraft(String(value));
+            setEditing(false);
+          }
+        }}
+        className={className}
+        style={{
+          ...style,
+          color: valueColor ?? "var(--text-primary)",
+          background: "color-mix(in oklab, var(--warm-sand) 30%, transparent)",
+          border: "1px solid var(--terracotta)",
+          borderRadius: 8,
+          padding: "2px 8px",
+          outline: "none",
+          width: "100%",
+          fontVariantNumeric: "tabular-nums",
+        }}
+      />
+    );
+  }
+
+  return (
+    <button
+      type="button"
+      onClick={() => setEditing(true)}
+      className={`${className ?? ""} text-left group relative inline-flex items-center gap-1`}
+      style={{
+        color: valueColor,
+        cursor: "text",
+        ...style,
+      }}
+      title="คลิกเพื่อแก้ไข"
+    >
+      <span>
+        {valuePrefix}
+        {fmt(valueAbs ? Math.abs(value) : value)}
+      </span>
+      <Pencil
+        size={10}
+        className="opacity-0 group-hover:opacity-50 transition-opacity shrink-0"
+        style={{ color: "var(--text-tertiary)" }}
+      />
+    </button>
   );
 }
 
@@ -790,17 +1349,30 @@ function BigCard({
   iconColor,
   label,
   value,
+  valuePrefix,
+  valueAbs,
   valueColor,
   sub,
+  onCommit,
+  readOnly,
 }: {
   icon: React.ReactNode;
   iconBg: string;
   iconColor: string;
   label: string;
-  value: string;
+  value: number;
+  valuePrefix?: string;
+  valueAbs?: boolean;
   valueColor?: string;
   sub?: string;
+  onCommit?: (n: number) => void;
+  readOnly?: boolean;
 }) {
+  const fmt = (n: number) =>
+    new Intl.NumberFormat("th-TH", {
+      minimumFractionDigits: 2,
+      maximumFractionDigits: 2,
+    }).format(n);
   return (
     <div className="glass p-5 sm:p-6 h-full transition-transform hover:-translate-y-0.5">
       <div
@@ -809,21 +1381,29 @@ function BigCard({
       >
         {icon}
       </div>
-      <p className="text-xs mb-1.5" style={{ color: "var(--stone-gray)" }}>
+      <p className="text-xs mb-1.5" style={{ color: "var(--text-tertiary)" }}>
         {label}
       </p>
-      <p
+      <div
         className="text-2xl sm:text-3xl font-medium break-words leading-tight"
         style={{
           fontFamily: "Georgia, serif",
-          color: valueColor ?? "var(--near-black)",
+          color: valueColor ?? "var(--text-primary)",
           overflowWrap: "anywhere",
         }}
       >
-        {value}
-      </p>
+        <EditableNumber
+          value={value}
+          valuePrefix={valuePrefix}
+          valueAbs={valueAbs}
+          valueColor={valueColor}
+          onCommit={onCommit}
+          readOnly={readOnly}
+          fmt={fmt}
+        />
+      </div>
       {sub && (
-        <p className="text-xs mt-2" style={{ color: "var(--stone-gray)" }}>
+        <p className="text-xs mt-2" style={{ color: "var(--text-tertiary)" }}>
           {sub}
         </p>
       )}
@@ -837,19 +1417,33 @@ function SmallCard({
   iconColor,
   label,
   value,
+  valuePrefix,
   valueColor,
   sub,
   accent,
+  onCommit,
+  readOnly,
 }: {
   icon: React.ReactNode;
   iconBg: string;
   iconColor: string;
   label: string;
-  value: string;
+  value: number;
+  valuePrefix?: string;
   valueColor?: string;
   sub?: string;
   accent?: boolean;
+  onCommit?: (n: number) => void;
+  readOnly?: boolean;
 }) {
+  const fmt = (n: number) =>
+    new Intl.NumberFormat("th-TH", {
+      minimumFractionDigits: 2,
+      maximumFractionDigits: 2,
+    }).format(n);
+  const textColor = accent
+    ? "var(--ivory)"
+    : valueColor ?? "var(--text-primary)";
   return (
     <div
       className={`${accent ? "glass-accent" : "glass"} p-4 h-full transition-transform hover:-translate-y-0.5`}
@@ -867,24 +1461,31 @@ function SmallCard({
       </div>
       <p
         className="text-[11px] mb-1"
-        style={{ color: accent ? "var(--warm-silver)" : "var(--stone-gray)" }}
+        style={{ color: accent ? "var(--warm-silver)" : "var(--text-tertiary)" }}
       >
         {label}
       </p>
-      <p
+      <div
         className="text-base sm:text-lg font-medium break-words leading-tight"
         style={{
           fontFamily: "Georgia, serif",
-          color: accent ? "var(--ivory)" : valueColor ?? "var(--near-black)",
+          color: textColor,
           overflowWrap: "anywhere",
         }}
       >
-        {value}
-      </p>
+        <EditableNumber
+          value={value}
+          valuePrefix={valuePrefix}
+          valueColor={textColor}
+          onCommit={onCommit}
+          readOnly={readOnly}
+          fmt={fmt}
+        />
+      </div>
       {sub && (
         <p
           className="text-[11px] mt-1"
-          style={{ color: accent ? "var(--warm-silver)" : "var(--stone-gray)" }}
+          style={{ color: accent ? "var(--warm-silver)" : "var(--text-tertiary)" }}
         >
           {sub}
         </p>
@@ -894,7 +1495,7 @@ function SmallCard({
 }
 
 /* ==========================================================================
-   Profit breakdown (compact)
+   Profit breakdown
    ========================================================================== */
 
 function ProfitBreakdown({
@@ -903,18 +1504,20 @@ function ProfitBreakdown({
   netAmount,
   costRate,
   fmt,
+  onEditLabelPrice,
 }: {
   labelPrice: number;
   cost: number;
   netAmount: number;
   costRate: number;
   fmt: (n: number) => string;
+  onEditLabelPrice: (v: number) => void;
 }) {
   return (
     <div className="glass overflow-hidden animate-slide-up">
       <div
         className="flex items-center gap-2 px-4 sm:px-5 py-3"
-        style={{ borderBottom: "1px solid color-mix(in oklab, var(--border-cream) 80%, transparent)" }}
+        style={{ borderBottom: "1px solid var(--border-soft)" }}
       >
         <div
           className="control-icon shrink-0"
@@ -929,35 +1532,51 @@ function ProfitBreakdown({
         </div>
         <h2
           className="text-sm font-medium"
-          style={{ fontFamily: "Georgia, serif", color: "var(--near-black)" }}
+          style={{ fontFamily: "Georgia, serif", color: "var(--text-primary)" }}
         >
           ที่มาของกำไร
         </h2>
       </div>
       <ul
         className="divide-y"
-        style={{ borderColor: "color-mix(in oklab, var(--border-cream) 80%, transparent)" }}
+        style={{ borderColor: "var(--border-soft)" }}
       >
         <BreakdownRow
           icon={<Tag size={12} />}
           iconColor="var(--info)"
           iconBg="color-mix(in oklab, var(--info) 15%, transparent)"
           label="ราคาป้าย"
-          value={`฿${fmt(labelPrice)}`}
+          value={
+            <EditableNumber
+              value={labelPrice}
+              valuePrefix="฿"
+              onCommit={onEditLabelPrice}
+              fmt={fmt}
+              style={{ color: "var(--text-primary)", fontWeight: 500 }}
+            />
+          }
         />
         <BreakdownRow
           icon={<Package size={12} />}
           iconColor="var(--charcoal-warm)"
           iconBg="color-mix(in oklab, var(--warm-sand) 80%, transparent)"
           label={`ต้นทุน (−${costRate}%)`}
-          value={`−฿${fmt(cost)}`}
+          value={
+            <span style={{ color: "var(--text-primary)", fontWeight: 500 }}>
+              −฿{fmt(cost)}
+            </span>
+          }
         />
         <BreakdownRow
           icon={<Wallet size={12} />}
           iconColor="var(--terracotta)"
           iconBg="color-mix(in oklab, var(--terracotta) 12%, transparent)"
           label="ยอดสุทธิรับเข้า"
-          value={`฿${fmt(netAmount)}`}
+          value={
+            <span style={{ color: "var(--text-primary)", fontWeight: 500 }}>
+              ฿{fmt(netAmount)}
+            </span>
+          }
         />
       </ul>
     </div>
@@ -975,7 +1594,7 @@ function BreakdownRow({
   iconColor: string;
   iconBg: string;
   label: string;
-  value: string;
+  value: React.ReactNode;
 }) {
   return (
     <li className="flex items-center gap-3 px-4 sm:px-5 py-2.5">
@@ -991,36 +1610,41 @@ function BreakdownRow({
       >
         {label}
       </span>
-      <span className="text-sm font-medium shrink-0" style={{ color: "var(--near-black)" }}>
-        {value}
-      </span>
+      <span className="text-sm shrink-0 text-right tabular-nums">{value}</span>
     </li>
   );
 }
 
 /* ==========================================================================
-   Fee Table — readable, with zebra stripes, sorted, with totals
+   Fee Table
    ========================================================================== */
 
 function FeeTable({
   items,
   grossSales,
   fmt,
+  onEdit,
+  onRemove,
 }: {
   items: FeeItem[];
   grossSales: number;
   fmt: (n: number) => string;
+  onEdit: (index: number, patch: Partial<FeeItem>) => void;
+  onRemove: (index: number) => void;
 }) {
-  const sorted = [...items].sort((a, b) => b.amount - a.amount);
-  const total = sorted.reduce((s, i) => s + i.amount, 0);
-  const maxAmount = Math.max(...sorted.map((i) => i.amount), 1);
+  // Sort desc by amount but keep original index for editing
+  const sortedWithIndex = items
+    .map((item, originalIndex) => ({ item, originalIndex }))
+    .sort((a, b) => b.item.amount - a.item.amount);
+  const total = items.reduce((s, i) => s + i.amount, 0);
+  const maxAmount = Math.max(...items.map((i) => i.amount), 1);
 
   return (
     <div className="glass overflow-hidden animate-slide-up">
       {/* Header */}
       <div
         className="flex items-center gap-2 px-4 sm:px-5 py-3.5"
-        style={{ borderBottom: "1px solid color-mix(in oklab, var(--border-cream) 80%, transparent)" }}
+        style={{ borderBottom: "1px solid var(--border-soft)" }}
       >
         <div
           className="control-icon shrink-0"
@@ -1035,7 +1659,7 @@ function FeeTable({
         </div>
         <h2
           className="text-sm sm:text-base font-medium"
-          style={{ fontFamily: "Georgia, serif", color: "var(--near-black)" }}
+          style={{ fontFamily: "Georgia, serif", color: "var(--text-primary)" }}
         >
           รายละเอียดค่าธรรมเนียม
         </h2>
@@ -1043,11 +1667,11 @@ function FeeTable({
           className="ml-auto text-[11px] px-2 py-0.5 rounded-full"
           style={{
             backgroundColor: "color-mix(in oklab, var(--warm-sand) 70%, transparent)",
-            color: "var(--stone-gray)",
+            color: "var(--text-tertiary)",
             border: "1px solid color-mix(in oklab, var(--border-warm) 80%, transparent)",
           }}
         >
-          {sorted.length} รายการ
+          {items.length} รายการ
         </span>
       </div>
 
@@ -1055,39 +1679,41 @@ function FeeTable({
       <div
         className="grid items-center px-4 sm:px-5 py-2 text-[11px] uppercase tracking-wide font-medium"
         style={{
-          gridTemplateColumns: "1fr auto 90px",
+          gridTemplateColumns: "1fr auto 70px 28px",
           gap: "12px",
-          color: "var(--stone-gray)",
+          color: "var(--text-tertiary)",
           backgroundColor: "color-mix(in oklab, var(--warm-sand) 35%, transparent)",
         }}
       >
         <span>รายการ</span>
         <span className="text-right">จำนวน</span>
         <span className="text-right">%</span>
+        <span />
       </div>
 
       {/* Rows */}
       <ul>
-        {sorted.map((item, i) => {
+        {sortedWithIndex.map(({ item, originalIndex }, i) => {
           const barPct = (item.amount / maxAmount) * 100;
           const salesPct =
             item.percentage ||
             (grossSales > 0 ? (item.amount / grossSales) * 100 : 0);
           return (
             <li
-              key={`${item.name}-${i}`}
+              key={`${item.name}-${originalIndex}`}
               className="relative animate-fade-in"
               style={{
                 animationDelay: `${0.2 + i * 0.04}s`,
                 backgroundColor:
-                  i % 2 === 0 ? "transparent" : "color-mix(in oklab, var(--warm-sand) 18%, transparent)",
+                  i % 2 === 0
+                    ? "transparent"
+                    : "color-mix(in oklab, var(--warm-sand) 18%, transparent)",
                 borderTop:
                   i === 0
                     ? undefined
-                    : "1px solid color-mix(in oklab, var(--border-cream) 70%, transparent)",
+                    : "1px solid color-mix(in oklab, var(--border-soft) 70%, transparent)",
               }}
             >
-              {/* Background magnitude bar */}
               <div
                 aria-hidden
                 className="absolute inset-y-0 left-0 animate-bar-grow"
@@ -1099,31 +1725,45 @@ function FeeTable({
                 }}
               />
               <div
-                className="relative grid items-center px-4 sm:px-5 py-3"
-                style={{ gridTemplateColumns: "1fr auto 90px", gap: "12px" }}
+                className="relative grid items-center px-4 sm:px-5 py-2.5"
+                style={{ gridTemplateColumns: "1fr auto 70px 28px", gap: "12px" }}
               >
-                <span
+                <EditableText
+                  value={item.name}
+                  onCommit={(v) => onEdit(originalIndex, { name: v })}
                   className="text-sm min-w-0"
                   style={{
-                    color: "var(--near-black)",
+                    color: "var(--text-primary)",
                     overflowWrap: "anywhere",
                     wordBreak: "break-word",
                   }}
-                >
-                  {item.name}
-                </span>
-                <span
+                />
+                <div
                   className="text-sm font-medium whitespace-nowrap text-right tabular-nums"
                   style={{ color: "var(--danger)" }}
                 >
-                  ฿{fmt(item.amount)}
-                </span>
+                  <EditableNumber
+                    value={item.amount}
+                    valuePrefix="฿"
+                    onCommit={(v) => onEdit(originalIndex, { amount: v })}
+                    fmt={fmt}
+                    valueColor="var(--danger)"
+                  />
+                </div>
                 <span
                   className="text-xs text-right tabular-nums"
-                  style={{ color: "var(--olive-gray)" }}
+                  style={{ color: "var(--text-secondary)" }}
                 >
                   {salesPct.toFixed(2)}%
                 </span>
+                <button
+                  onClick={() => onRemove(originalIndex)}
+                  aria-label={`ลบ ${item.name}`}
+                  className="opacity-30 hover:opacity-100 press-shrink transition-opacity justify-self-end"
+                  style={{ color: "var(--danger)" }}
+                >
+                  <X size={12} />
+                </button>
               </div>
             </li>
           );
@@ -1134,9 +1774,9 @@ function FeeTable({
       <div
         className="grid items-center px-4 sm:px-5 py-3"
         style={{
-          gridTemplateColumns: "1fr auto 90px",
+          gridTemplateColumns: "1fr auto 70px 28px",
           gap: "12px",
-          borderTop: "1px solid color-mix(in oklab, var(--border-cream) 80%, transparent)",
+          borderTop: "1px solid var(--border-soft)",
           backgroundColor: "color-mix(in oklab, var(--warm-sand) 45%, transparent)",
         }}
       >
@@ -1151,11 +1791,97 @@ function FeeTable({
         </span>
         <span
           className="text-xs text-right tabular-nums"
-          style={{ color: "var(--olive-gray)" }}
+          style={{ color: "var(--text-secondary)" }}
         >
           {grossSales > 0 ? ((total / grossSales) * 100).toFixed(2) : "0.00"}%
         </span>
+        <span />
       </div>
     </div>
+  );
+}
+
+/* ==========================================================================
+   Editable text (fee item name)
+   ========================================================================== */
+
+function EditableText({
+  value,
+  onCommit,
+  className,
+  style,
+}: {
+  value: string;
+  onCommit: (v: string) => void;
+  className?: string;
+  style?: React.CSSProperties;
+}) {
+  const [editing, setEditing] = useState(false);
+  const [draft, setDraft] = useState(value);
+  const inputRef = useRef<HTMLInputElement>(null);
+
+  useEffect(() => {
+    // Sync draft from parent when not actively editing
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    if (!editing) setDraft(value);
+  }, [value, editing]);
+
+  useEffect(() => {
+    if (editing) {
+      inputRef.current?.focus();
+      inputRef.current?.select();
+    }
+  }, [editing]);
+
+  const commit = () => {
+    const v = draft.trim();
+    if (v) onCommit(v);
+    setEditing(false);
+  };
+
+  if (editing) {
+    return (
+      <input
+        ref={inputRef}
+        type="text"
+        value={draft}
+        onChange={(e) => setDraft(e.target.value)}
+        onBlur={commit}
+        onKeyDown={(e) => {
+          if (e.key === "Enter") e.currentTarget.blur();
+          if (e.key === "Escape") {
+            setDraft(value);
+            setEditing(false);
+          }
+        }}
+        className={className}
+        style={{
+          ...style,
+          background: "color-mix(in oklab, var(--warm-sand) 30%, transparent)",
+          border: "1px solid var(--terracotta)",
+          borderRadius: 8,
+          padding: "2px 8px",
+          outline: "none",
+          width: "100%",
+        }}
+      />
+    );
+  }
+
+  return (
+    <button
+      type="button"
+      onClick={() => setEditing(true)}
+      className={`${className ?? ""} text-left group inline-flex items-center gap-1`}
+      style={{ cursor: "text", ...style }}
+      title="คลิกเพื่อแก้ไข"
+    >
+      <span>{value}</span>
+      <Pencil
+        size={10}
+        className="opacity-0 group-hover:opacity-50 transition-opacity shrink-0"
+        style={{ color: "var(--text-tertiary)" }}
+      />
+    </button>
   );
 }
