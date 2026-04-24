@@ -151,68 +151,84 @@ export default function Dashboard({ apiKey, onClearKey }: Props) {
     new Intl.NumberFormat("th-TH", { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(n);
 
   return (
-    <div className="min-h-screen" style={{ backgroundColor: "var(--parchment)" }}>
-      {/* Nav */}
-      <nav
-        className="sticky top-0 z-10 px-4 sm:px-6 py-3 backdrop-blur-md"
-        style={{
-          backgroundColor: "color-mix(in oklab, var(--ivory) 90%, transparent)",
-          borderBottom: "1px solid var(--border-cream)",
-        }}
+    <div className="min-h-screen relative" style={{ backgroundColor: "var(--parchment)" }}>
+      {/* Ambient gradient orbs (subtle background for glass to blur over) */}
+      <div
+        aria-hidden
+        className="pointer-events-none fixed inset-0 overflow-hidden"
       >
+        <div
+          className="absolute -top-24 -left-20 w-72 h-72 rounded-full opacity-40 animate-pulse-soft"
+          style={{ background: "radial-gradient(circle, rgba(201,100,66,0.25), transparent 70%)" }}
+        />
+        <div
+          className="absolute top-1/3 -right-24 w-80 h-80 rounded-full opacity-30"
+          style={{ background: "radial-gradient(circle, rgba(217,119,87,0.2), transparent 70%)" }}
+        />
+        <div
+          className="absolute bottom-0 left-1/3 w-96 h-96 rounded-full opacity-25"
+          style={{ background: "radial-gradient(circle, rgba(232,230,220,0.6), transparent 70%)" }}
+        />
+      </div>
+
+      {/* Nav */}
+      <nav className="sticky top-0 z-20 px-4 py-3 glass" style={{ borderRadius: 0, borderLeft: 0, borderRight: 0, borderTop: 0 }}>
         <div className="max-w-3xl mx-auto flex items-center justify-between gap-2">
           <h1
-            className="text-lg sm:text-xl font-medium shrink-0 flex items-center gap-1.5"
+            className="text-lg sm:text-xl font-medium shrink-0 flex items-center gap-2"
             style={{ fontFamily: "Georgia, serif", color: "var(--near-black)" }}
           >
-            <Sparkles size={16} style={{ color: "var(--terracotta)" }} className="animate-pulse-soft" />
+            <span
+              className="control-icon glass-primary"
+              style={{ width: 32, height: 32 }}
+            >
+              <Sparkles size={14} />
+            </span>
             Claribill
           </h1>
           <div className="flex items-center gap-2 min-w-0">
             <span
-              className="inline-flex items-center text-[10px] sm:text-xs px-2 py-1 rounded-lg truncate max-w-[110px] sm:max-w-[200px]"
-              style={{
-                backgroundColor: "var(--warm-sand)",
-                color: "var(--stone-gray)",
-                border: "1px solid var(--border-warm)",
-              }}
+              className="control-sm glass-chip truncate max-w-[110px] sm:max-w-[200px]"
+              style={{ color: "var(--stone-gray)" }}
               title={activeModel}
             >
-              {activeModel}
+              <span
+                className="inline-block w-1.5 h-1.5 rounded-full shrink-0"
+                style={{ backgroundColor: loading ? "var(--terracotta)" : "var(--success)" }}
+              />
+              <span className="truncate">{activeModel}</span>
             </span>
             <button
               onClick={() => setShowSettings(true)}
               aria-label="Settings"
-              className="flex items-center gap-1.5 px-2.5 sm:px-3 py-1.5 rounded-lg text-sm press-shrink transition-colors hover:opacity-80"
-              style={{
-                backgroundColor: "var(--warm-sand)",
-                color: "var(--charcoal-warm)",
-                boxShadow: "0px 0px 0px 1px var(--border-warm)",
-              }}
+              className="control-icon glass-chip"
+              style={{ color: "var(--charcoal-warm)" }}
             >
-              <Settings size={14} />
-              <span className="hidden sm:inline">Settings</span>
+              <Settings size={16} />
             </button>
           </div>
         </div>
       </nav>
 
-      <main className="max-w-3xl mx-auto px-4 py-6 sm:py-10 space-y-5 sm:space-y-8">
+      <main className="relative max-w-3xl mx-auto px-4 py-6 sm:py-10 space-y-5 sm:space-y-6">
         {/* Upload Zone */}
         <div
           onDragOver={(e) => { e.preventDefault(); setDragging(true); }}
           onDragLeave={() => setDragging(false)}
           onDrop={handleDrop}
           onClick={() => fileInputRef.current?.click()}
-          className="relative rounded-2xl cursor-pointer transition-all duration-300 press-shrink animate-slide-up"
+          className="glass cursor-pointer transition-all duration-300 animate-slide-up overflow-hidden"
           style={{
-            border: `2px dashed ${dragging ? "var(--terracotta)" : "var(--border-warm)"}`,
-            backgroundColor: dragging ? "rgba(201,100,66,0.06)" : "var(--ivory)",
-            minHeight: "180px",
+            minHeight: 200,
+            borderStyle: "dashed",
+            borderColor: dragging
+              ? "var(--terracotta)"
+              : "color-mix(in oklab, var(--border-warm) 80%, transparent)",
+            borderWidth: 2,
             transform: dragging ? "scale(1.01)" : "scale(1)",
             boxShadow: dragging
-              ? "0 8px 32px rgba(201,100,66,0.15)"
-              : "0 2px 12px rgba(0,0,0,0.03)",
+              ? "inset 0 1px 0 rgba(255,255,255,0.5), 0 12px 40px rgba(201,100,66,0.2)"
+              : undefined,
           }}
         >
           <input
@@ -228,7 +244,8 @@ export default function Dashboard({ apiKey, onClearKey }: Props) {
               <img
                 src={imagePreview}
                 alt="สลิปที่อัปโหลด"
-                className="max-h-60 sm:max-h-72 mx-auto rounded-xl object-contain"
+                className="max-h-60 sm:max-h-72 mx-auto object-contain"
+                style={{ borderRadius: "calc(var(--radius) - 4px)" }}
               />
               <button
                 onClick={(e) => {
@@ -239,8 +256,12 @@ export default function Dashboard({ apiKey, onClearKey }: Props) {
                   setError(null);
                 }}
                 aria-label="ลบรูป"
-                className="absolute top-4 right-4 sm:top-6 sm:right-6 p-1.5 rounded-full press-shrink hover:scale-110 transition-transform"
-                style={{ backgroundColor: "var(--dark-surface)", color: "var(--warm-silver)" }}
+                className="control-icon absolute top-4 right-4"
+                style={{
+                  backgroundColor: "rgba(20,20,19,0.75)",
+                  backdropFilter: "blur(8px)",
+                  color: "var(--warm-silver)",
+                }}
               >
                 <X size={14} />
               </button>
@@ -248,14 +269,18 @@ export default function Dashboard({ apiKey, onClearKey }: Props) {
           ) : (
             <div className="flex flex-col items-center justify-center gap-3 py-10 sm:py-14 px-4">
               <div
-                className={`p-4 rounded-2xl ${dragging ? "" : "animate-pulse-soft"}`}
+                className={`glass-chip flex items-center justify-center ${dragging ? "" : "animate-pulse-soft"}`}
                 style={{
-                  backgroundColor: dragging ? "rgba(201,100,66,0.12)" : "var(--warm-sand)",
+                  width: 56,
+                  height: 56,
+                  backgroundColor: dragging
+                    ? "color-mix(in oklab, var(--terracotta) 15%, transparent)"
+                    : undefined,
                   transition: "background-color 0.25s ease",
                 }}
               >
                 <ImageIcon
-                  size={28}
+                  size={24}
                   style={{ color: dragging ? "var(--terracotta)" : "var(--olive-gray)" }}
                 />
               </div>
@@ -271,16 +296,12 @@ export default function Dashboard({ apiKey, onClearKey }: Props) {
           )}
         </div>
 
-        {/* Analyze Button */}
+        {/* Analyze Button — primary action, strongest color */}
         {imageData && !loading && (
           <button
             onClick={handleAnalyze}
-            className="w-full flex items-center justify-center gap-2 py-3.5 rounded-xl font-medium transition-all hover:opacity-90 press-shrink animate-slide-up"
-            style={{
-              backgroundColor: "var(--terracotta)",
-              color: "var(--ivory)",
-              boxShadow: "0 4px 16px rgba(201,100,66,0.25)",
-            }}
+            className="control glass-primary w-full animate-slide-up animate-glow-pulse"
+            style={{ height: 52 }}
           >
             <Upload size={16} />
             วิเคราะห์สลิป
@@ -306,13 +327,13 @@ export default function Dashboard({ apiKey, onClearKey }: Props) {
 
 function LoadingPanel({ modelName }: { modelName: string }) {
   return (
-    <div
-      className="flex items-center gap-3 p-4 rounded-2xl animate-scale-in shimmer-bg"
-      style={{
-        border: "1px solid var(--border-cream)",
-      }}
-    >
-      <Loader2 size={20} className="animate-spin-slow shrink-0" style={{ color: "var(--terracotta)" }} />
+    <div className="glass shimmer-overlay flex items-center gap-3 p-4 animate-scale-in">
+      <div
+        className="control-icon glass-primary shrink-0"
+        style={{ width: 40, height: 40 }}
+      >
+        <Loader2 size={18} className="animate-spin-slow" />
+      </div>
       <div className="min-w-0 flex-1">
         <p className="text-sm font-medium truncate" style={{ color: "var(--charcoal-warm)" }}>
           กำลังวิเคราะห์...
@@ -351,21 +372,19 @@ function ErrorPanel({ message }: { message: string }) {
   };
 
   return (
-    <div
-      className="rounded-2xl overflow-hidden animate-slide-down"
-      style={{
-        backgroundColor: "rgba(181,51,51,0.06)",
-        border: "1px solid rgba(181,51,51,0.22)",
-      }}
-    >
+    <div className="glass-danger overflow-hidden animate-slide-down">
       <div className="flex items-start gap-3 p-4">
-        <AlertCircle
-          size={18}
-          className="mt-0.5 shrink-0 animate-bounce-in"
-          style={{ color: "#b53333" }}
-        />
+        <div
+          className="control-icon shrink-0 animate-bounce-in"
+          style={{
+            backgroundColor: "rgba(181,51,51,0.15)",
+            color: "var(--danger)",
+          }}
+        >
+          <AlertCircle size={16} />
+        </div>
         <div className="min-w-0 flex-1">
-          <p className="text-xs font-medium mb-1" style={{ color: "#b53333" }}>
+          <p className="text-xs font-medium mb-1" style={{ color: "var(--danger)" }}>
             เกิดข้อผิดพลาด
           </p>
           <div
@@ -383,11 +402,13 @@ function ErrorPanel({ message }: { message: string }) {
           <div className="flex items-center gap-2 mt-3 flex-wrap">
             <button
               onClick={copy}
-              className="inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs font-medium press-shrink transition-colors"
+              className="control-sm"
               style={{
-                backgroundColor: copied ? "rgba(34,139,60,0.12)" : "rgba(181,51,51,0.1)",
-                color: copied ? "#1f7a38" : "#b53333",
-                border: `1px solid ${copied ? "rgba(34,139,60,0.3)" : "rgba(181,51,51,0.25)"}`,
+                backgroundColor: copied
+                  ? "color-mix(in oklab, var(--success) 15%, transparent)"
+                  : "color-mix(in oklab, var(--danger) 12%, transparent)",
+                color: copied ? "var(--success)" : "var(--danger)",
+                border: `1px solid ${copied ? "color-mix(in oklab, var(--success) 35%, transparent)" : "color-mix(in oklab, var(--danger) 28%, transparent)"}`,
               }}
               aria-label="คัดลอก error"
             >
@@ -406,11 +427,11 @@ function ErrorPanel({ message }: { message: string }) {
             {isLong && (
               <button
                 onClick={() => setExpanded((v) => !v)}
-                className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-xs font-medium press-shrink transition-colors"
+                className="control-sm"
                 style={{
                   backgroundColor: "transparent",
-                  color: "#b53333",
-                  border: "1px solid rgba(181,51,51,0.25)",
+                  color: "var(--danger)",
+                  border: "1px solid color-mix(in oklab, var(--danger) 28%, transparent)",
                 }}
               >
                 <ChevronDown
@@ -446,24 +467,28 @@ function AnalysisDisplay({
         <div className="animate-slide-up stagger-1">
           <SummaryCard
             icon={<BarChart3 size={18} />}
+            iconBg="color-mix(in oklab, var(--info) 18%, transparent)"
+            iconColor="var(--info)"
             label="ยอดขายรวม"
             value={`฿${fmt(result.grossSales)}`}
-            accent={false}
           />
         </div>
         <div className="animate-slide-up stagger-2">
           <SummaryCard
             icon={<TrendingDown size={18} />}
+            iconBg="color-mix(in oklab, var(--danger) 15%, transparent)"
+            iconColor="var(--danger)"
             label="ค่าธรรมเนียมรวม"
             value={`฿${fmt(result.totalFees)}`}
             sub={`${feeRate.toFixed(2)}% ของยอดขาย`}
-            accent={false}
             warn
           />
         </div>
         <div className="animate-slide-up stagger-3">
           <SummaryCard
             icon={<Wallet size={18} />}
+            iconBg="rgba(255,255,255,0.1)"
+            iconColor="var(--terracotta-2)"
             label="ยอดสุทธิ"
             value={`฿${fmt(result.netAmount)}`}
             accent
@@ -473,19 +498,22 @@ function AnalysisDisplay({
 
       {/* Fee Breakdown */}
       {result.feeItems && result.feeItems.length > 0 && (
-        <div
-          className="rounded-2xl overflow-hidden animate-slide-up stagger-4"
-          style={{
-            border: "1px solid var(--border-cream)",
-            backgroundColor: "var(--ivory)",
-            boxShadow: "0 2px 16px rgba(0,0,0,0.04)",
-          }}
-        >
+        <div className="glass overflow-hidden animate-slide-up stagger-4">
           <div
             className="flex items-center gap-2 px-4 sm:px-5 py-3.5"
-            style={{ borderBottom: "1px solid var(--border-cream)" }}
+            style={{ borderBottom: "1px solid color-mix(in oklab, var(--border-cream) 80%, transparent)" }}
           >
-            <ReceiptText size={16} style={{ color: "var(--olive-gray)" }} />
+            <div
+              className="control-icon shrink-0"
+              style={{
+                width: 28,
+                height: 28,
+                backgroundColor: "color-mix(in oklab, var(--terracotta) 12%, transparent)",
+                color: "var(--terracotta)",
+              }}
+            >
+              <ReceiptText size={14} />
+            </div>
             <h2
               className="text-sm sm:text-base font-medium"
               style={{ fontFamily: "Georgia, serif", color: "var(--near-black)" }}
@@ -495,7 +523,10 @@ function AnalysisDisplay({
           </div>
 
           {/* Mobile: card list */}
-          <ul className="sm:hidden divide-y" style={{ borderColor: "var(--border-cream)" }}>
+          <ul
+            className="sm:hidden divide-y"
+            style={{ borderColor: "color-mix(in oklab, var(--border-cream) 80%, transparent)" }}
+          >
             {result.feeItems.map((item, i) => (
               <li
                 key={i}
@@ -511,7 +542,7 @@ function AnalysisDisplay({
                   </span>
                   <span
                     className="text-sm font-medium shrink-0"
-                    style={{ color: "#b53333" }}
+                    style={{ color: "var(--danger)" }}
                   >
                     ฿{fmt(item.amount)}
                   </span>
@@ -521,10 +552,10 @@ function AnalysisDisplay({
             ))}
           </ul>
 
-          {/* Tablet/Desktop: table */}
+          {/* Tablet+ table */}
           <table className="hidden sm:table w-full text-sm">
             <thead>
-              <tr style={{ backgroundColor: "var(--warm-sand)" }}>
+              <tr style={{ backgroundColor: "color-mix(in oklab, var(--warm-sand) 50%, transparent)" }}>
                 <th className="text-left px-5 py-2.5 font-medium" style={{ color: "var(--charcoal-warm)" }}>
                   รายการ
                 </th>
@@ -542,14 +573,14 @@ function AnalysisDisplay({
                   key={i}
                   className="animate-fade-in"
                   style={{
-                    borderTop: "1px solid var(--border-cream)",
+                    borderTop: "1px solid color-mix(in oklab, var(--border-cream) 80%, transparent)",
                     animationDelay: `${0.3 + i * 0.05}s`,
                   }}
                 >
                   <td className="px-5 py-3" style={{ color: "var(--near-black)", overflowWrap: "anywhere" }}>
                     {item.name}
                   </td>
-                  <td className="px-5 py-3 text-right" style={{ color: "#b53333" }}>
+                  <td className="px-5 py-3 text-right" style={{ color: "var(--danger)" }}>
                     ฿{fmt(item.amount)}
                   </td>
                   <td className="px-5 py-3 text-right" style={{ color: "var(--olive-gray)" }}>
@@ -567,6 +598,8 @@ function AnalysisDisplay({
 
 function SummaryCard({
   icon,
+  iconBg,
+  iconColor,
   label,
   value,
   sub,
@@ -574,6 +607,8 @@ function SummaryCard({
   warn,
 }: {
   icon: React.ReactNode;
+  iconBg: string;
+  iconColor: string;
   label: string;
   value: string;
   sub?: string;
@@ -582,18 +617,16 @@ function SummaryCard({
 }) {
   return (
     <div
-      className="rounded-2xl p-4 sm:p-5 transition-transform hover:-translate-y-0.5"
-      style={{
-        backgroundColor: accent ? "var(--near-black)" : "var(--ivory)",
-        border: `1px solid ${accent ? "var(--dark-surface)" : "var(--border-cream)"}`,
-        boxShadow: accent
-          ? "0 8px 28px rgba(0,0,0,0.12)"
-          : "rgba(0,0,0,0.04) 0px 4px 20px",
-      }}
+      className={`${accent ? "glass-accent" : "glass"} p-4 sm:p-5 transition-transform hover:-translate-y-0.5`}
     >
       <div
-        className="mb-2.5"
-        style={{ color: accent ? "var(--warm-silver)" : warn ? "#b53333" : "var(--olive-gray)" }}
+        className="control-icon mb-2.5"
+        style={{
+          width: 36,
+          height: 36,
+          backgroundColor: accent ? "rgba(255,255,255,0.08)" : iconBg,
+          color: accent ? "var(--terracotta-2)" : iconColor,
+        }}
       >
         {icon}
       </div>
@@ -607,7 +640,7 @@ function SummaryCard({
         className="text-lg sm:text-xl font-medium break-words"
         style={{
           fontFamily: "Georgia, serif",
-          color: accent ? "var(--ivory)" : warn ? "#b53333" : "var(--near-black)",
+          color: accent ? "var(--ivory)" : warn ? "var(--danger)" : "var(--near-black)",
           overflowWrap: "anywhere",
         }}
       >
@@ -628,11 +661,14 @@ function PercentBar({ value }: { value: number }) {
     <div className="flex items-center justify-end gap-2 w-full">
       <div
         className="flex-1 sm:w-16 sm:flex-none max-w-[160px] h-1.5 rounded-full overflow-hidden"
-        style={{ backgroundColor: "var(--warm-sand)" }}
+        style={{ backgroundColor: "color-mix(in oklab, var(--warm-sand) 80%, transparent)" }}
       >
         <div
           className="h-full rounded-full animate-bar-grow"
-          style={{ width: `${clamped}%`, backgroundColor: "var(--terracotta)" }}
+          style={{
+            width: `${clamped}%`,
+            background: "linear-gradient(90deg, var(--terracotta-2), var(--terracotta))",
+          }}
         />
       </div>
       <span

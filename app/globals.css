@@ -5,6 +5,7 @@
   --ivory: #faf9f5;
   --near-black: #141413;
   --terracotta: #c96442;
+  --terracotta-2: #d97757;
   --coral: #d97757;
   --olive-gray: #5e5d59;
   --stone-gray: #87867f;
@@ -14,6 +15,19 @@
   --border-cream: #f0eee6;
   --border-warm: #e8e6dc;
   --warm-silver: #b0aea5;
+  --danger: #b53333;
+  --success: #1f7a38;
+  --info: #3898ec;
+
+  /* Unified radius — used on EVERYTHING */
+  --radius: 18px;
+  --radius-pill: 999px;
+
+  /* Consistent interactive sizing */
+  --control-h: 44px;      /* buttons, inputs */
+  --control-h-sm: 36px;   /* compact chip/icon */
+  --control-px: 16px;
+  --control-px-sm: 12px;
 }
 
 body {
@@ -23,48 +37,204 @@ body {
   -webkit-tap-highlight-color: transparent;
 }
 
-@keyframes fadeIn {
-  from { opacity: 0; }
-  to { opacity: 1; }
+/* ==========================================================================
+   Liquid Glass system — a single visual language for every surface.
+   ========================================================================== */
+
+.glass {
+  background: linear-gradient(
+    135deg,
+    color-mix(in oklab, var(--ivory) 75%, transparent) 0%,
+    color-mix(in oklab, var(--parchment) 65%, transparent) 100%
+  );
+  backdrop-filter: blur(18px) saturate(1.4);
+  -webkit-backdrop-filter: blur(18px) saturate(1.4);
+  border: 1px solid color-mix(in oklab, var(--ivory) 60%, transparent);
+  box-shadow:
+    inset 0 1px 0 color-mix(in oklab, white 60%, transparent),
+    inset 0 -1px 0 color-mix(in oklab, var(--warm-sand) 40%, transparent),
+    0 6px 24px rgba(20, 20, 19, 0.06),
+    0 1px 3px rgba(20, 20, 19, 0.04);
+  border-radius: var(--radius);
 }
 
-@keyframes slideUp {
-  from { opacity: 0; transform: translateY(12px); }
-  to { opacity: 1; transform: translateY(0); }
+.glass-strong {
+  background: linear-gradient(
+    135deg,
+    color-mix(in oklab, var(--ivory) 92%, transparent) 0%,
+    color-mix(in oklab, var(--ivory) 80%, transparent) 100%
+  );
+  backdrop-filter: blur(24px) saturate(1.6);
+  -webkit-backdrop-filter: blur(24px) saturate(1.6);
+  border: 1px solid color-mix(in oklab, white 50%, var(--border-cream));
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.7),
+    inset 0 -1px 0 color-mix(in oklab, var(--warm-sand) 50%, transparent),
+    0 12px 40px rgba(20, 20, 19, 0.1),
+    0 2px 8px rgba(20, 20, 19, 0.04);
+  border-radius: var(--radius);
 }
 
-@keyframes slideDown {
-  from { opacity: 0; transform: translateY(-8px); }
-  to { opacity: 1; transform: translateY(0); }
+/* Accent glass — for the hero/primary surface (the net total card etc.) */
+.glass-accent {
+  background: linear-gradient(
+    135deg,
+    rgba(48, 48, 46, 0.92) 0%,
+    rgba(20, 20, 19, 0.95) 100%
+  );
+  backdrop-filter: blur(18px) saturate(1.5);
+  -webkit-backdrop-filter: blur(18px) saturate(1.5);
+  border: 1px solid rgba(176, 174, 165, 0.18);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.08),
+    inset 0 -1px 0 rgba(0, 0, 0, 0.3),
+    0 12px 36px rgba(20, 20, 19, 0.25),
+    0 2px 8px rgba(20, 20, 19, 0.12);
+  color: var(--ivory);
+  border-radius: var(--radius);
 }
 
-@keyframes scaleIn {
-  from { opacity: 0; transform: scale(0.96); }
-  to { opacity: 1; transform: scale(1); }
+/* Primary CTA glass — terracotta gradient + glow */
+.glass-primary {
+  background: linear-gradient(
+    135deg,
+    var(--terracotta-2) 0%,
+    var(--terracotta) 100%
+  );
+  border: 1px solid color-mix(in oklab, var(--terracotta) 80%, black);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.3),
+    inset 0 -1px 0 rgba(0, 0, 0, 0.12),
+    0 8px 24px rgba(201, 100, 66, 0.32),
+    0 2px 6px rgba(201, 100, 66, 0.2);
+  color: var(--ivory);
+  border-radius: var(--radius);
 }
 
-@keyframes pulseSoft {
-  0%, 100% { transform: scale(1); opacity: 1; }
-  50% { transform: scale(1.04); opacity: 0.9; }
+.glass-danger {
+  background: linear-gradient(
+    135deg,
+    rgba(181, 51, 51, 0.08) 0%,
+    rgba(181, 51, 51, 0.14) 100%
+  );
+  backdrop-filter: blur(18px) saturate(1.4);
+  -webkit-backdrop-filter: blur(18px) saturate(1.4);
+  border: 1px solid rgba(181, 51, 51, 0.25);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.25),
+    0 6px 20px rgba(181, 51, 51, 0.1);
+  border-radius: var(--radius);
 }
 
-@keyframes shimmer {
-  0% { background-position: -200% 0; }
-  100% { background-position: 200% 0; }
+.glass-danger-solid {
+  background: linear-gradient(135deg, #c94444 0%, #a32828 100%);
+  border: 1px solid rgba(181, 51, 51, 0.8);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.2),
+    0 8px 22px rgba(181, 51, 51, 0.28);
+  color: var(--ivory);
+  border-radius: var(--radius);
 }
 
-@keyframes spin {
-  to { transform: rotate(360deg); }
+.glass-chip {
+  background: color-mix(in oklab, var(--ivory) 60%, transparent);
+  backdrop-filter: blur(12px) saturate(1.4);
+  -webkit-backdrop-filter: blur(12px) saturate(1.4);
+  border: 1px solid color-mix(in oklab, var(--border-warm) 80%, transparent);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.5);
+  border-radius: var(--radius);
 }
 
-@keyframes bounceIn {
-  0% { opacity: 0; transform: scale(0.6); }
-  60% { opacity: 1; transform: scale(1.08); }
-  100% { transform: scale(1); }
+/* ==========================================================================
+   Control sizing — every button/input/chip shares these.
+   ========================================================================== */
+
+.control {
+  height: var(--control-h);
+  padding: 0 var(--control-px);
+  border-radius: var(--radius);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  font-size: 14px;
+  font-weight: 500;
+  transition: transform 0.15s ease, opacity 0.15s ease, box-shadow 0.2s ease;
+  white-space: nowrap;
 }
 
-@keyframes barGrow {
-  from { width: 0%; }
+.control-sm {
+  height: var(--control-h-sm);
+  padding: 0 var(--control-px-sm);
+  border-radius: var(--radius);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  font-size: 12px;
+  font-weight: 500;
+  transition: transform 0.15s ease, opacity 0.15s ease;
+  white-space: nowrap;
+}
+
+.control-icon {
+  width: var(--control-h-sm);
+  height: var(--control-h-sm);
+  border-radius: var(--radius);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  transition: transform 0.15s ease, opacity 0.15s ease;
+}
+
+.control:active, .control-sm:active, .control-icon:active {
+  transform: scale(0.97);
+}
+
+.control:hover, .control-sm:hover, .control-icon:hover {
+  opacity: 0.92;
+}
+
+/* Input shares control sizing */
+.input-glass {
+  height: var(--control-h);
+  padding: 0 var(--control-px);
+  border-radius: var(--radius);
+  width: 100%;
+  font-size: 14px;
+  outline: none;
+  background: color-mix(in oklab, var(--parchment) 60%, transparent);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  border: 1px solid var(--border-warm);
+  color: var(--near-black);
+  transition: border-color 0.2s ease, box-shadow 0.2s ease, background 0.2s ease;
+}
+.input-glass:focus {
+  border-color: var(--terracotta);
+  box-shadow: 0 0 0 3px color-mix(in oklab, var(--terracotta) 20%, transparent);
+  background: color-mix(in oklab, var(--ivory) 80%, transparent);
+}
+
+/* Rounded to radius everywhere */
+.radius { border-radius: var(--radius); }
+
+/* ==========================================================================
+   Animations
+   ========================================================================== */
+
+@keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
+@keyframes slideUp { from { opacity: 0; transform: translateY(12px); } to { opacity: 1; transform: translateY(0); } }
+@keyframes slideDown { from { opacity: 0; transform: translateY(-8px); } to { opacity: 1; transform: translateY(0); } }
+@keyframes scaleIn { from { opacity: 0; transform: scale(0.96); } to { opacity: 1; transform: scale(1); } }
+@keyframes pulseSoft { 0%, 100% { transform: scale(1); opacity: 1; } 50% { transform: scale(1.04); opacity: 0.9; } }
+@keyframes shimmer { 0% { background-position: -200% 0; } 100% { background-position: 200% 0; } }
+@keyframes spin { to { transform: rotate(360deg); } }
+@keyframes bounceIn { 0% { opacity: 0; transform: scale(0.6); } 60% { opacity: 1; transform: scale(1.08); } 100% { transform: scale(1); } }
+@keyframes barGrow { from { width: 0%; } }
+@keyframes glowPulse {
+  0%, 100% { box-shadow: inset 0 1px 0 rgba(255,255,255,0.3), 0 8px 24px rgba(201,100,66,0.32), 0 2px 6px rgba(201,100,66,0.2); }
+  50% { box-shadow: inset 0 1px 0 rgba(255,255,255,0.3), 0 12px 32px rgba(201,100,66,0.5), 0 2px 8px rgba(201,100,66,0.3); }
 }
 
 .animate-fade-in { animation: fadeIn 0.4s ease-out both; }
@@ -75,28 +245,30 @@ body {
 .animate-bounce-in { animation: bounceIn 0.5s cubic-bezier(0.2, 1.4, 0.3, 1) both; }
 .animate-spin-slow { animation: spin 1.2s linear infinite; }
 .animate-bar-grow { animation: barGrow 0.8s cubic-bezier(0.2, 0.9, 0.3, 1) both; }
+.animate-glow-pulse { animation: glowPulse 2.4s ease-in-out infinite; }
 
 .stagger-1 { animation-delay: 0.05s; }
 .stagger-2 { animation-delay: 0.12s; }
 .stagger-3 { animation-delay: 0.19s; }
 .stagger-4 { animation-delay: 0.26s; }
 
-.shimmer-bg {
+.shimmer-overlay {
+  position: relative;
+  overflow: hidden;
+}
+.shimmer-overlay::after {
+  content: "";
+  position: absolute;
+  inset: 0;
   background: linear-gradient(
     90deg,
-    var(--warm-sand) 0%,
-    var(--ivory) 50%,
-    var(--warm-sand) 100%
+    transparent 0%,
+    color-mix(in oklab, white 40%, transparent) 50%,
+    transparent 100%
   );
   background-size: 200% 100%;
-  animation: shimmer 1.6s linear infinite;
-}
-
-.press-shrink {
-  transition: transform 0.15s ease, opacity 0.15s ease;
-}
-.press-shrink:active {
-  transform: scale(0.97);
+  animation: shimmer 1.8s linear infinite;
+  pointer-events: none;
 }
 
 @media (prefers-reduced-motion: reduce) {

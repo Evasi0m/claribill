@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { KeyRound, ExternalLink, ArrowRight } from "lucide-react";
+import { KeyRound, ExternalLink, ArrowRight, Sparkles, ShieldCheck } from "lucide-react";
 
 interface Props {
   onSave: (key: string) => void;
@@ -27,24 +27,33 @@ export default function ApiKeySetup({ onSave }: Props) {
 
   return (
     <div
-      className="min-h-screen flex flex-col items-center justify-center px-4"
+      className="min-h-screen flex flex-col items-center justify-center px-4 relative overflow-hidden"
       style={{ backgroundColor: "var(--parchment)" }}
     >
-      <div
-        className="w-full max-w-md rounded-2xl p-8"
-        style={{
-          backgroundColor: "var(--ivory)",
-          border: "1px solid var(--border-cream)",
-          boxShadow: "rgba(0,0,0,0.05) 0px 4px 24px",
-        }}
-      >
+      {/* Ambient background orbs */}
+      <div aria-hidden className="pointer-events-none fixed inset-0 overflow-hidden">
+        <div
+          className="absolute -top-24 -left-20 w-80 h-80 rounded-full opacity-50 animate-pulse-soft"
+          style={{ background: "radial-gradient(circle, rgba(201,100,66,0.3), transparent 70%)" }}
+        />
+        <div
+          className="absolute bottom-0 -right-20 w-96 h-96 rounded-full opacity-40"
+          style={{ background: "radial-gradient(circle, rgba(217,119,87,0.25), transparent 70%)" }}
+        />
+        <div
+          className="absolute top-1/2 left-1/2 -translate-x-1/2 w-96 h-96 rounded-full opacity-30"
+          style={{ background: "radial-gradient(circle, rgba(232,230,220,0.8), transparent 70%)" }}
+        />
+      </div>
+
+      <div className="glass-strong w-full max-w-md p-7 sm:p-8 animate-scale-in relative">
         {/* Logo / Title */}
-        <div className="mb-8 text-center">
+        <div className="mb-7 text-center">
           <div
-            className="inline-flex items-center justify-center w-12 h-12 rounded-xl mb-4"
-            style={{ backgroundColor: "var(--terracotta)" }}
+            className="glass-primary inline-flex items-center justify-center mb-4 animate-glow-pulse"
+            style={{ width: 56, height: 56, borderRadius: "var(--radius)" }}
           >
-            <KeyRound size={22} color="#faf9f5" />
+            <Sparkles size={24} />
           </div>
           <h1
             className="text-3xl font-medium leading-tight"
@@ -58,13 +67,14 @@ export default function ApiKeySetup({ onSave }: Props) {
         </div>
 
         {/* Form */}
-        <form onSubmit={handleSubmit} className="space-y-4">
+        <form onSubmit={handleSubmit} className="space-y-3">
           <div>
             <label
               htmlFor="apikey"
-              className="block text-sm font-medium mb-1.5"
+              className="text-sm font-medium mb-1.5 flex items-center gap-1.5"
               style={{ color: "var(--charcoal-warm)" }}
             >
+              <KeyRound size={13} style={{ color: "var(--terracotta)" }} />
               Google Gemini API Key
             </label>
             <input
@@ -76,23 +86,14 @@ export default function ApiKeySetup({ onSave }: Props) {
                 setError("");
               }}
               placeholder="AIza..."
-              className="w-full px-3 py-2.5 rounded-xl text-sm outline-none transition-all"
-              style={{
-                backgroundColor: "var(--parchment)",
-                border: "1px solid var(--border-warm)",
-                color: "var(--near-black)",
-              }}
-              onFocus={(e) => {
-                e.currentTarget.style.borderColor = "#3898ec";
-                e.currentTarget.style.boxShadow = "0 0 0 3px rgba(56,152,236,0.15)";
-              }}
-              onBlur={(e) => {
-                e.currentTarget.style.borderColor = "var(--border-warm)";
-                e.currentTarget.style.boxShadow = "none";
-              }}
+              className="input-glass"
+              autoComplete="off"
             />
             {error && (
-              <p className="mt-1.5 text-xs" style={{ color: "#b53333" }}>
+              <p
+                className="mt-1.5 text-xs animate-slide-down"
+                style={{ color: "var(--danger)" }}
+              >
                 {error}
               </p>
             )}
@@ -100,11 +101,8 @@ export default function ApiKeySetup({ onSave }: Props) {
 
           <button
             type="submit"
-            className="w-full flex items-center justify-center gap-2 py-2.5 rounded-xl text-sm font-medium transition-opacity hover:opacity-90"
-            style={{
-              backgroundColor: "var(--terracotta)",
-              color: "var(--ivory)",
-            }}
+            className="control glass-primary w-full"
+            style={{ height: 52 }}
           >
             Save &amp; Start
             <ArrowRight size={16} />
@@ -128,13 +126,17 @@ export default function ApiKeySetup({ onSave }: Props) {
 
         {/* Security note */}
         <div
-          className="mt-5 rounded-xl p-3 text-xs leading-relaxed"
-          style={{
-            backgroundColor: "var(--warm-sand)",
-            color: "var(--olive-gray)",
-          }}
+          className="glass-chip mt-5 p-3 text-xs leading-relaxed flex items-start gap-2"
+          style={{ color: "var(--olive-gray)" }}
         >
-          🔒 API Key ของคุณถูกเก็บไว้ใน Browser เท่านั้น ไม่มีการส่งข้อมูลไปยัง Server ใดๆ
+          <ShieldCheck
+            size={14}
+            className="shrink-0 mt-0.5"
+            style={{ color: "var(--success)" }}
+          />
+          <span>
+            API Key ของคุณถูกเก็บไว้ใน Browser เท่านั้น ไม่มีการส่งข้อมูลไปยัง Server ใดๆ
+          </span>
         </div>
       </div>
     </div>
