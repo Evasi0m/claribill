@@ -1,11 +1,16 @@
 import type { MetadataRoute } from "next";
 
+export const dynamic = "force-static";
+
+const basePath = process.env.NODE_ENV === "production" ? "/claribill" : "";
+
 export default function manifest(): MetadataRoute.Manifest {
   return {
     name: "วิเคราะห์บิล-Claribill",
     short_name: "วิเคราะห์บิล-Claribill",
     description: "วิเคราะห์ค่าธรรมเนียมอีคอมเมิร์ซจากสลิปของคุณ",
-    start_url: "/",
+    start_url: `${basePath}/`,
+    scope: `${basePath}/`,
     display: "standalone",
     orientation: "portrait",
     background_color: "#f5f4ed",
@@ -13,13 +18,19 @@ export default function manifest(): MetadataRoute.Manifest {
     lang: "th",
     icons: [
       {
-        src: "/icon",
+        src: `${basePath}/icon.png`,
         sizes: "192x192",
         type: "image/png",
         purpose: "any",
       },
       {
-        src: "/apple-icon",
+        src: `${basePath}/icon.png`,
+        sizes: "192x192",
+        type: "image/png",
+        purpose: "maskable",
+      },
+      {
+        src: `${basePath}/apple-icon.png`,
         sizes: "180x180",
         type: "image/png",
         purpose: "any",

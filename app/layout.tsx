@@ -1,6 +1,8 @@
 import type { Metadata, Viewport } from "next";
 import "./globals.css";
 
+const basePath = process.env.NODE_ENV === "production" ? "/claribill" : "";
+
 export const metadata: Metadata = {
   title: "วิเคราะห์บิล-Claribill",
   description: "วิเคราะห์ค่าธรรมเนียมอีคอมเมิร์ซจากสลิปของคุณ",
@@ -9,6 +11,16 @@ export const metadata: Metadata = {
     capable: true,
     title: "วิเคราะห์บิล-Claribill",
     statusBarStyle: "default",
+    startupImage: [`${basePath}/apple-icon.png`],
+  },
+  icons: {
+    icon: [
+      { url: `${basePath}/icon.png`, sizes: "192x192", type: "image/png" },
+    ],
+    apple: [
+      { url: `${basePath}/apple-icon.png`, sizes: "180x180", type: "image/png" },
+    ],
+    shortcut: [{ url: `${basePath}/icon.png` }],
   },
   formatDetection: {
     telephone: false,
