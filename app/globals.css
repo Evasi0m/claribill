@@ -1,4 +1,19 @@
 @import "tailwindcss";
+@import url("https://fonts.googleapis.com/css2?family=TikTok+Sans:wght@400;500;600;700&display=swap");
+
+/* Limit "TikTok Sans" to Thai characters, digits, and the percent sign.
+   For Latin letters (A–Z, a–z) we shadow the family with Georgia so that
+   English text continues to render in the original serif. The browser picks
+   the @font-face whose unicode-range matches the codepoint; for ranges
+   covered by both the Google-imported face and this override, the later
+   declaration wins. */
+@font-face {
+  font-family: "TikTok Sans";
+  font-style: normal;
+  font-weight: 400 700;
+  src: local("Georgia"), local("Georgia Pro"), local("Times New Roman"), local("Times");
+  unicode-range: U+0041-005A, U+0061-007A;
+}
 
 :root {
   /* Light theme (default) — parchment canvas */
@@ -71,7 +86,7 @@
 body {
   background-color: var(--parchment);
   color: var(--near-black);
-  font-family: Georgia, serif;
+  font-family: "TikTok Sans", Georgia, serif;
   -webkit-tap-highlight-color: transparent;
 }
 
