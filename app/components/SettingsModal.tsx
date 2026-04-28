@@ -93,7 +93,7 @@ export default function SettingsModal({
             </div>
             <h2
               className="text-lg font-medium"
-              style={{ fontFamily: "Georgia, serif", color: "var(--text-primary)" }}
+              style={{ color: "var(--text-primary)" }}
             >
               Settings
             </h2>
