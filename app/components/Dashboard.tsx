@@ -421,27 +421,6 @@ export default function Dashboard({ apiKey, onClearKey }: Props) {
     });
   };
 
-  const removeFeeItem = (index: number) => {
-    setResult((prev) => {
-      if (!prev) return prev;
-      const items = prev.feeItems.filter((_, i) => i !== index);
-      const totalFees = items.reduce((s, f) => s + (Number(f.amount) || 0), 0);
-      const merged = recomputePercentages({ ...prev, feeItems: items, totalFees });
-      if (currentEntryId) {
-        const costRate = rateFor(platformRates, merged.platform);
-        const cost = (merged.labelPrice ?? merged.grossSales) * (1 - costRate / 100);
-        const profit = merged.netAmount - cost;
-        const next = updateHistory(currentEntryId, {
-          result: merged,
-          costRate,
-          profit,
-        });
-        setHistory(next);
-      }
-      return merged;
-    });
-  };
-
   const changePlatform = (p: Platform) => updateResult({ platform: p });
 
   /* ------------- history handlers ------------- */
@@ -619,7 +598,6 @@ export default function Dashboard({ apiKey, onClearKey }: Props) {
               profit={profit}
               onUpdateResult={updateResult}
               onUpdateFeeItem={updateFeeItem}
-              onRemoveFeeItem={removeFeeItem}
               onChangePlatform={changePlatform}
               onExportCsv={exportCsv}
               onExportPng={exportPng}
@@ -994,7 +972,6 @@ function AnalysisDisplay({
   profit,
   onUpdateResult,
   onUpdateFeeItem,
-  onRemoveFeeItem,
   onChangePlatform,
   onExportCsv,
   onExportPng,
@@ -1008,7 +985,6 @@ function AnalysisDisplay({
   profit: number;
   onUpdateResult: (patch: Partial<AnalysisResult>) => void;
   onUpdateFeeItem: (index: number, patch: Partial<FeeItem>) => void;
-  onRemoveFeeItem: (index: number) => void;
   onChangePlatform: (p: Platform) => void;
   onExportCsv: () => void;
   onExportPng: () => void;
@@ -1155,7 +1131,6 @@ function AnalysisDisplay({
           grossSales={result.grossSales}
           fmt={fmt}
           onEdit={onUpdateFeeItem}
-          onRemove={onRemoveFeeItem}
         />
       )}
     </div>
@@ -1734,13 +1709,11 @@ function FeeTable({
   grossSales,
   fmt,
   onEdit,
-  onRemove,
 }: {
   items: FeeItem[];
   grossSales: number;
   fmt: (n: number) => string;
   onEdit: (index: number, patch: Partial<FeeItem>) => void;
-  onRemove: (index: number) => void;
 }) {
   // Sort desc by amount but keep original index for editing
   const sortedWithIndex = items
@@ -1789,7 +1762,7 @@ function FeeTable({
       <div
         className="grid items-center px-4 sm:px-5 py-2 text-[11px] uppercase tracking-wide font-medium"
         style={{
-          gridTemplateColumns: "1fr auto 70px 28px",
+          gridTemplateColumns: "1fr auto 70px",
           gap: "12px",
           color: "var(--text-tertiary)",
           backgroundColor: "color-mix(in oklab, var(--warm-sand) 35%, transparent)",
@@ -1798,7 +1771,6 @@ function FeeTable({
         <span>รายการ</span>
         <span className="text-right">จำนวน</span>
         <span className="text-right">%</span>
-        <span />
       </div>
 
       {/* Rows */}
@@ -1866,14 +1838,6 @@ function FeeTable({
                 >
                   {salesPct.toFixed(2)}%
                 </span>
-                <button
-                  onClick={() => onRemove(originalIndex)}
-                  aria-label={`ลบ ${item.name}`}
-                  className="opacity-30 hover:opacity-100 press-shrink transition-opacity justify-self-end"
-                  style={{ color: "var(--danger)" }}
-                >
-                  <X size={12} />
-                </button>
               </div>
             </li>
           );
@@ -1884,7 +1848,7 @@ function FeeTable({
       <div
         className="grid items-center px-4 sm:px-5 py-3"
         style={{
-          gridTemplateColumns: "1fr auto 70px 28px",
+          gridTemplateColumns: "1fr auto 70px",
           gap: "12px",
           borderTop: "1px solid var(--border-soft)",
           backgroundColor: "color-mix(in oklab, var(--warm-sand) 45%, transparent)",
@@ -1905,7 +1869,6 @@ function FeeTable({
         >
           {grossSales > 0 ? ((total / grossSales) * 100).toFixed(2) : "0.00"}%
         </span>
-        <span />
       </div>
     </div>
   );
