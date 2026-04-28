@@ -144,7 +144,7 @@ export default function HistoryModal({
             </div>
             <h2
               className="text-lg font-medium truncate"
-              style={{ fontFamily: "Georgia, serif", color: "var(--text-primary)" }}
+              style={{ color: "var(--text-primary)" }}
             >
               ประวัติการวิเคราะห์
             </h2>
@@ -428,7 +428,7 @@ function ComparisonCard({
       <div className="flex items-center justify-between mb-3">
         <p
           className="text-sm font-medium"
-          style={{ fontFamily: "Georgia, serif", color: "var(--text-primary)" }}
+          style={{ color: "var(--text-primary)" }}
         >
           เปรียบเทียบเดือน
         </p>

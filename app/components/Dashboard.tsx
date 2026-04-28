@@ -421,27 +421,6 @@ export default function Dashboard({ apiKey, onClearKey }: Props) {
     });
   };
 
-  const removeFeeItem = (index: number) => {
-    setResult((prev) => {
-      if (!prev) return prev;
-      const items = prev.feeItems.filter((_, i) => i !== index);
-      const totalFees = items.reduce((s, f) => s + (Number(f.amount) || 0), 0);
-      const merged = recomputePercentages({ ...prev, feeItems: items, totalFees });
-      if (currentEntryId) {
-        const costRate = rateFor(platformRates, merged.platform);
-        const cost = (merged.labelPrice ?? merged.grossSales) * (1 - costRate / 100);
-        const profit = merged.netAmount - cost;
-        const next = updateHistory(currentEntryId, {
-          result: merged,
-          costRate,
-          profit,
-        });
-        setHistory(next);
-      }
-      return merged;
-    });
-  };
-
   const changePlatform = (p: Platform) => updateResult({ platform: p });
 
   /* ------------- history handlers ------------- */
@@ -522,7 +501,7 @@ export default function Dashboard({ apiKey, onClearKey }: Props) {
         <div className="max-w-3xl mx-auto flex items-center justify-between gap-2">
           <h1
             className="text-lg sm:text-xl font-medium shrink-0 flex items-center gap-2"
-            style={{ fontFamily: "Georgia, serif", color: "var(--text-primary)" }}
+            style={{ color: "var(--text-primary)" }}
           >
             <span className="control-icon glass-primary" style={{ width: 32, height: 32 }}>
               <Sparkles size={14} />
@@ -619,7 +598,6 @@ export default function Dashboard({ apiKey, onClearKey }: Props) {
               profit={profit}
               onUpdateResult={updateResult}
               onUpdateFeeItem={updateFeeItem}
-              onRemoveFeeItem={removeFeeItem}
               onChangePlatform={changePlatform}
               onExportCsv={exportCsv}
               onExportPng={exportPng}
@@ -994,7 +972,6 @@ function AnalysisDisplay({
   profit,
   onUpdateResult,
   onUpdateFeeItem,
-  onRemoveFeeItem,
   onChangePlatform,
   onExportCsv,
   onExportPng,
@@ -1008,7 +985,6 @@ function AnalysisDisplay({
   profit: number;
   onUpdateResult: (patch: Partial<AnalysisResult>) => void;
   onUpdateFeeItem: (index: number, patch: Partial<FeeItem>) => void;
-  onRemoveFeeItem: (index: number) => void;
   onChangePlatform: (p: Platform) => void;
   onExportCsv: () => void;
   onExportPng: () => void;
@@ -1017,7 +993,6 @@ function AnalysisDisplay({
   const feeRate = result.grossSales > 0 ? (result.totalFees / result.grossSales) * 100 : 0;
   const marginPct = labelPrice > 0 ? (profit / labelPrice) * 100 : 0;
   const profitPositive = profit >= 0;
-  const profitColor = profitPositive ? "var(--success)" : "var(--danger)";
 
   return (
     <div className="space-y-5 sm:space-y-6">
@@ -1058,12 +1033,40 @@ function AnalysisDisplay({
         </button>
       </div>
 
-      {/* Bento grid */}
+      {/* Tag-price prompt — Shopee/Lazada bills omit the pre-discount price,
+          so labelPrice falls back to grossSales and the cost basis is wrong
+          unless the seller fills it in. */}
+      <LabelPriceNotice
+        platform={result.platform ?? "other"}
+        labelPrice={result.labelPrice ?? result.grossSales}
+        grossSales={result.grossSales}
+        fmt={fmt}
+        onCommit={(v) => onUpdateResult({ labelPrice: v })}
+      />
+
+      {/* Bento grid — mobile-first: profit hero on top, then sales/net pair,
+          then fees full-width. On sm+ profit and gross share a row, fees and
+          net share the next, keeping the 4-column rhythm. */}
       <div
         className="grid gap-3 sm:gap-4"
         style={{ gridTemplateColumns: "repeat(4, minmax(0, 1fr))" }}
       >
-        <div className="col-span-4 sm:col-span-2 animate-slide-up stagger-1">
+        <div className="col-span-4 animate-slide-up stagger-1">
+          <HeroCard
+            label="กำไรโดยประมาณ"
+            value={profit}
+            valuePrefix={profitPositive ? "฿" : "−฿"}
+            valueAbs
+            valueColor={profitPositive ? "#7ad99a" : "#ff8b7e"}
+            marginPct={marginPct}
+            costRate={costRate}
+            cost={cost}
+            fmt={fmt}
+            profitPositive={profitPositive}
+          />
+        </div>
+
+        <div className="col-span-4 sm:col-span-2 animate-slide-up stagger-2">
           <BigCard
             icon={<BarChart3 size={18} />}
             iconBg="color-mix(in oklab, var(--info) 18%, transparent)"
@@ -1080,49 +1083,31 @@ function AnalysisDisplay({
           />
         </div>
 
-        <div className="col-span-4 sm:col-span-2 animate-slide-up stagger-2">
+        <div className="col-span-4 sm:col-span-2 animate-slide-up stagger-3">
           <BigCard
-            icon={<TrendingUp size={18} />}
-            iconBg={
-              profitPositive
-                ? "color-mix(in oklab, var(--success) 15%, transparent)"
-                : "color-mix(in oklab, var(--danger) 15%, transparent)"
-            }
-            iconColor={profitColor}
-            label="กำไรโดยประมาณ"
-            value={profit}
-            valuePrefix={profitPositive ? "฿" : "−฿"}
-            valueAbs
-            valueColor={profitColor}
-            sub={`${marginPct.toFixed(2)}% • ต้นทุน −${costRate}% = ฿${fmt(cost)}`}
-            readOnly
+            icon={<Wallet size={18} />}
+            iconBg="color-mix(in oklab, var(--terracotta) 18%, transparent)"
+            iconColor="var(--terracotta)"
+            label="ยอดสุทธิรับเข้า"
+            value={result.netAmount}
+            valuePrefix="฿"
+            valueColor="var(--terracotta)"
+            onCommit={(v) => onUpdateResult({ netAmount: v })}
+            sub="หลังหักค่าธรรมเนียม"
           />
         </div>
 
-        <div className="col-span-2 animate-slide-up stagger-3">
+        <div className="col-span-4 animate-slide-up stagger-4">
           <SmallCard
             icon={<TrendingDown size={16} />}
             iconBg="color-mix(in oklab, var(--danger) 15%, transparent)"
             iconColor="var(--danger)"
-            label="ค่าธรรมเนียม"
+            label="ค่าธรรมเนียมรวม"
             value={result.totalFees}
             valuePrefix="฿"
             valueColor="var(--danger)"
             sub={`${feeRate.toFixed(2)}% ของยอดขาย`}
             onCommit={(v) => onUpdateResult({ totalFees: v })}
-          />
-        </div>
-
-        <div className="col-span-2 animate-slide-up stagger-4">
-          <SmallCard
-            icon={<Wallet size={16} />}
-            iconBg="rgba(255,255,255,0.1)"
-            iconColor="var(--terracotta-2)"
-            label="ยอดสุทธิ"
-            value={result.netAmount}
-            valuePrefix="฿"
-            onCommit={(v) => onUpdateResult({ netAmount: v })}
-            accent
           />
         </div>
       </div>
@@ -1144,7 +1129,6 @@ function AnalysisDisplay({
           grossSales={result.grossSales}
           fmt={fmt}
           onEdit={onUpdateFeeItem}
-          onRemove={onRemoveFeeItem}
         />
       )}
     </div>
@@ -1343,6 +1327,79 @@ function EditableNumber({
    Cards
    ========================================================================== */
 
+function HeroCard({
+  label,
+  value,
+  valuePrefix,
+  valueAbs,
+  valueColor,
+  marginPct,
+  costRate,
+  cost,
+  fmt,
+  profitPositive,
+}: {
+  label: string;
+  value: number;
+  valuePrefix?: string;
+  valueAbs?: boolean;
+  valueColor?: string;
+  marginPct: number;
+  costRate: number;
+  cost: number;
+  fmt: (n: number) => string;
+  profitPositive: boolean;
+}) {
+  const display = valueAbs ? Math.abs(value) : value;
+  return (
+    <div className="card-hero p-5 sm:p-7">
+      <div className="flex items-center gap-2 mb-2">
+        <div
+          className="control-icon"
+          style={{
+            width: 28,
+            height: 28,
+            backgroundColor: "rgba(255,255,255,0.08)",
+            color: profitPositive ? "#7ad99a" : "#ff7a6c",
+          }}
+        >
+          <TrendingUp size={14} />
+        </div>
+        <p
+          className="text-[11px] uppercase tracking-wide"
+          style={{ color: "var(--warm-silver)" }}
+        >
+          {label}
+        </p>
+      </div>
+      <div
+        className="text-3xl sm:text-4xl font-medium break-words leading-tight tabular-nums"
+        style={{ color: valueColor ?? "var(--ivory)", overflowWrap: "anywhere" }}
+      >
+        {valuePrefix}
+        {fmt(display)}
+      </div>
+      <div className="mt-3 flex flex-wrap items-center gap-x-3 gap-y-1 text-[11px]">
+        <span
+          className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full tabular-nums"
+          style={{
+            backgroundColor: profitPositive
+              ? "rgba(122, 217, 154, 0.16)"
+              : "rgba(255, 122, 108, 0.18)",
+            color: profitPositive ? "#7ad99a" : "#ff9a8d",
+          }}
+        >
+          {marginPct >= 0 ? "+" : ""}
+          {marginPct.toFixed(2)}% margin
+        </span>
+        <span style={{ color: "var(--warm-silver)" }}>
+          ต้นทุน −{costRate}% = ฿{fmt(cost)}
+        </span>
+      </div>
+    </div>
+  );
+}
+
 function BigCard({
   icon,
   iconBg,
@@ -1374,20 +1431,24 @@ function BigCard({
       maximumFractionDigits: 2,
     }).format(n);
   return (
-    <div className="glass p-5 sm:p-6 h-full transition-transform hover:-translate-y-0.5">
-      <div
-        className="control-icon mb-3"
-        style={{ width: 40, height: 40, backgroundColor: iconBg, color: iconColor }}
-      >
-        {icon}
+    <div className="card p-4 sm:p-5 h-full transition-transform hover:-translate-y-0.5">
+      <div className="flex items-center gap-2 mb-2.5">
+        <div
+          className="control-icon shrink-0"
+          style={{ width: 32, height: 32, backgroundColor: iconBg, color: iconColor }}
+        >
+          {icon}
+        </div>
+        <p
+          className="text-[11px] uppercase tracking-wide"
+          style={{ color: "var(--text-tertiary)" }}
+        >
+          {label}
+        </p>
       </div>
-      <p className="text-xs mb-1.5" style={{ color: "var(--text-tertiary)" }}>
-        {label}
-      </p>
       <div
-        className="text-2xl sm:text-3xl font-medium break-words leading-tight"
+        className="text-2xl sm:text-3xl font-medium break-words leading-tight tabular-nums"
         style={{
-          fontFamily: "Georgia, serif",
           color: valueColor ?? "var(--text-primary)",
           overflowWrap: "anywhere",
         }}
@@ -1420,7 +1481,6 @@ function SmallCard({
   valuePrefix,
   valueColor,
   sub,
-  accent,
   onCommit,
   readOnly,
 }: {
@@ -1432,7 +1492,6 @@ function SmallCard({
   valuePrefix?: string;
   valueColor?: string;
   sub?: string;
-  accent?: boolean;
   onCommit?: (n: number) => void;
   readOnly?: boolean;
 }) {
@@ -1441,55 +1500,142 @@ function SmallCard({
       minimumFractionDigits: 2,
       maximumFractionDigits: 2,
     }).format(n);
-  const textColor = accent
-    ? "var(--ivory)"
-    : valueColor ?? "var(--text-primary)";
+  const textColor = valueColor ?? "var(--text-primary)";
   return (
-    <div
-      className={`${accent ? "glass-accent" : "glass"} p-4 h-full transition-transform hover:-translate-y-0.5`}
-    >
+    <div className="card p-4 h-full flex items-center gap-3 transition-transform hover:-translate-y-0.5">
       <div
-        className="control-icon mb-2"
-        style={{
-          width: 32,
-          height: 32,
-          backgroundColor: accent ? "rgba(255,255,255,0.08)" : iconBg,
-          color: accent ? "var(--terracotta-2)" : iconColor,
-        }}
+        className="control-icon shrink-0"
+        style={{ width: 36, height: 36, backgroundColor: iconBg, color: iconColor }}
       >
         {icon}
       </div>
-      <p
-        className="text-[11px] mb-1"
-        style={{ color: accent ? "var(--warm-silver)" : "var(--text-tertiary)" }}
-      >
-        {label}
-      </p>
-      <div
-        className="text-base sm:text-lg font-medium break-words leading-tight"
-        style={{
-          fontFamily: "Georgia, serif",
-          color: textColor,
-          overflowWrap: "anywhere",
-        }}
-      >
-        <EditableNumber
-          value={value}
-          valuePrefix={valuePrefix}
-          valueColor={textColor}
-          onCommit={onCommit}
-          readOnly={readOnly}
-          fmt={fmt}
-        />
-      </div>
-      {sub && (
+      <div className="min-w-0 flex-1">
         <p
-          className="text-[11px] mt-1"
-          style={{ color: accent ? "var(--warm-silver)" : "var(--text-tertiary)" }}
+          className="text-[11px] uppercase tracking-wide"
+          style={{ color: "var(--text-tertiary)" }}
         >
-          {sub}
+          {label}
         </p>
-      )}
+        <div
+          className="text-lg sm:text-xl font-medium break-words leading-tight tabular-nums"
+          style={{ color: textColor, overflowWrap: "anywhere" }}
+        >
+          <EditableNumber
+            value={value}
+            valuePrefix={valuePrefix}
+            valueColor={textColor}
+            onCommit={onCommit}
+            readOnly={readOnly}
+            fmt={fmt}
+          />
+        </div>
+        {sub && (
+          <p className="text-[11px] mt-0.5" style={{ color: "var(--text-tertiary)" }}>
+            {sub}
+          </p>
+        )}
+      </div>
+    </div>
+  );
+}
+
+/* ==========================================================================
+   Label-price prompt — surfaces an input for Shopee/Lazada bills, where the
+   slip only shows the post-discount price. Without the original tag price,
+   the cost basis (labelPrice × (1 − costRate%)) is computed off the wrong
+   number and the resulting profit understates margin.
+   ========================================================================== */
+
+function LabelPriceNotice({
+  platform,
+  labelPrice,
+  grossSales,
+  fmt,
+  onCommit,
+}: {
+  platform: Platform;
+  labelPrice: number;
+  grossSales: number;
+  fmt: (n: number) => string;
+  onCommit: (n: number) => void;
+}) {
+  const needsTagPrice = platform === "shopee" || platform === "lazada";
+  const isUnset = labelPrice <= grossSales;
+  const [draft, setDraft] = useState("");
+  const [editing, setEditing] = useState(false);
+
+  useEffect(() => {
+    // Sync draft from parent when not actively editing.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    if (!editing) setDraft(labelPrice > grossSales ? String(labelPrice) : "");
+  }, [labelPrice, grossSales, editing]);
+
+  if (!needsTagPrice) return null;
+
+  const commit = () => {
+    const n = Number(draft);
+    if (Number.isFinite(n) && n > 0) onCommit(n);
+    setEditing(false);
+  };
+
+  return (
+    <div className="card animate-slide-up p-4 sm:p-5">
+      <div className="flex items-start gap-3">
+        <div
+          className="control-icon shrink-0"
+          style={{
+            width: 32,
+            height: 32,
+            backgroundColor: "color-mix(in oklab, var(--info) 15%, transparent)",
+            color: "var(--info)",
+          }}
+        >
+          <Tag size={14} />
+        </div>
+        <div className="flex-1 min-w-0">
+          <p
+            className="text-sm font-medium"
+            style={{ color: "var(--text-primary)" }}
+          >
+            {isUnset ? "ใส่ราคาป้ายสินค้า" : "ราคาป้ายสินค้า"}
+          </p>
+          <p
+            className="text-xs mt-0.5"
+            style={{ color: "var(--charcoal-warm)", overflowWrap: "anywhere" }}
+          >
+            บิล {PLATFORM_LABELS[platform]} ไม่แสดงราคาป้ายเต็ม — ใส่ราคาป้ายเพื่อคำนวณต้นทุนได้ถูกต้อง
+          </p>
+          <div className="mt-3 flex items-center gap-2">
+            <span
+              className="text-sm tabular-nums shrink-0"
+              style={{ color: "var(--charcoal-warm)" }}
+            >
+              ฿
+            </span>
+            <input
+              type="number"
+              inputMode="decimal"
+              step="0.01"
+              min="0"
+              value={draft}
+              onFocus={() => setEditing(true)}
+              onChange={(e) => setDraft(e.target.value)}
+              onBlur={commit}
+              onKeyDown={(e) => {
+                if (e.key === "Enter") (e.currentTarget as HTMLInputElement).blur();
+                if (e.key === "Escape") {
+                  setDraft(labelPrice > grossSales ? String(labelPrice) : "");
+                  setEditing(false);
+                  (e.currentTarget as HTMLInputElement).blur();
+                }
+              }}
+              placeholder={`มากกว่า ${fmt(grossSales)}`}
+              className="input-glass tabular-nums"
+              style={{ flex: 1 }}
+            />
+          </div>
+        </div>
+      </div>
     </div>
   );
 }
@@ -1514,7 +1660,7 @@ function ProfitBreakdown({
   onEditLabelPrice: (v: number) => void;
 }) {
   return (
-    <div className="glass overflow-hidden animate-slide-up">
+    <div className="card overflow-hidden animate-slide-up">
       <div
         className="flex items-center gap-2 px-4 sm:px-5 py-3"
         style={{ borderBottom: "1px solid var(--border-soft)" }}
@@ -1532,7 +1678,7 @@ function ProfitBreakdown({
         </div>
         <h2
           className="text-sm font-medium"
-          style={{ fontFamily: "Georgia, serif", color: "var(--text-primary)" }}
+          style={{ color: "var(--text-primary)" }}
         >
           ที่มาของกำไร
         </h2>
@@ -1624,114 +1770,79 @@ function FeeTable({
   grossSales,
   fmt,
   onEdit,
-  onRemove,
 }: {
   items: FeeItem[];
   grossSales: number;
   fmt: (n: number) => string;
   onEdit: (index: number, patch: Partial<FeeItem>) => void;
-  onRemove: (index: number) => void;
 }) {
   // Sort desc by amount but keep original index for editing
   const sortedWithIndex = items
     .map((item, originalIndex) => ({ item, originalIndex }))
     .sort((a, b) => b.item.amount - a.item.amount);
   const total = items.reduce((s, i) => s + i.amount, 0);
-  const maxAmount = Math.max(...items.map((i) => i.amount), 1);
+  const totalSalesPct = grossSales > 0 ? (total / grossSales) * 100 : 0;
 
   return (
-    <div className="glass overflow-hidden animate-slide-up">
+    <div className="card overflow-hidden animate-slide-up">
       {/* Header */}
       <div
-        className="flex items-center gap-2 px-4 sm:px-5 py-3.5"
+        className="flex items-center gap-2.5 px-4 sm:px-5 py-3.5"
         style={{ borderBottom: "1px solid var(--border-soft)" }}
       >
         <div
           className="control-icon shrink-0"
           style={{
-            width: 28,
-            height: 28,
-            backgroundColor: "color-mix(in oklab, var(--danger) 12%, transparent)",
+            width: 32,
+            height: 32,
+            backgroundColor: "color-mix(in oklab, var(--danger) 14%, transparent)",
             color: "var(--danger)",
           }}
         >
-          <ReceiptText size={14} />
+          <ReceiptText size={15} />
         </div>
-        <h2
-          className="text-sm sm:text-base font-medium"
-          style={{ fontFamily: "Georgia, serif", color: "var(--text-primary)" }}
-        >
-          รายละเอียดค่าธรรมเนียม
-        </h2>
-        <span
-          className="ml-auto text-[11px] px-2 py-0.5 rounded-full"
-          style={{
-            backgroundColor: "color-mix(in oklab, var(--warm-sand) 70%, transparent)",
-            color: "var(--text-tertiary)",
-            border: "1px solid color-mix(in oklab, var(--border-warm) 80%, transparent)",
-          }}
-        >
-          {items.length} รายการ
-        </span>
+        <div className="min-w-0 flex-1">
+          <h2
+            className="text-sm sm:text-base font-medium leading-tight"
+            style={{ color: "var(--text-primary)" }}
+          >
+            รายละเอียดค่าธรรมเนียม
+          </h2>
+          <p
+            className="text-[11px] tabular-nums"
+            style={{ color: "var(--text-tertiary)" }}
+          >
+            {items.length} รายการ · รวม {totalSalesPct.toFixed(2)}% ของยอดขาย
+          </p>
+        </div>
       </div>
 
-      {/* Column headers */}
-      <div
-        className="grid items-center px-4 sm:px-5 py-2 text-[11px] uppercase tracking-wide font-medium"
-        style={{
-          gridTemplateColumns: "1fr auto 70px 28px",
-          gap: "12px",
-          color: "var(--text-tertiary)",
-          backgroundColor: "color-mix(in oklab, var(--warm-sand) 35%, transparent)",
-        }}
-      >
-        <span>รายการ</span>
-        <span className="text-right">จำนวน</span>
-        <span className="text-right">%</span>
-        <span />
-      </div>
-
-      {/* Rows */}
-      <ul>
+      {/* Rows — mobile-first stacked layout: name + amount on top, bar + %
+          underneath. Bar length = item amount as a share of total fees, so
+          the heaviest fee fills the bar and the rest are visibly relative. */}
+      <ul className="px-3 sm:px-4 py-2">
         {sortedWithIndex.map(({ item, originalIndex }, i) => {
-          const barPct = (item.amount / maxAmount) * 100;
+          const ofTotalPct = total > 0 ? (item.amount / total) * 100 : 0;
           const salesPct =
             item.percentage ||
             (grossSales > 0 ? (item.amount / grossSales) * 100 : 0);
           return (
             <li
               key={`${item.name}-${originalIndex}`}
-              className="relative animate-fade-in"
+              className="animate-fade-in py-2.5"
               style={{
-                animationDelay: `${0.2 + i * 0.04}s`,
-                backgroundColor:
-                  i % 2 === 0
-                    ? "transparent"
-                    : "color-mix(in oklab, var(--warm-sand) 18%, transparent)",
+                animationDelay: `${0.15 + i * 0.04}s`,
                 borderTop:
                   i === 0
                     ? undefined
-                    : "1px solid color-mix(in oklab, var(--border-soft) 70%, transparent)",
+                    : "1px solid color-mix(in oklab, var(--border-soft) 60%, transparent)",
               }}
             >
-              <div
-                aria-hidden
-                className="absolute inset-y-0 left-0 animate-bar-grow"
-                style={{
-                  width: `${barPct}%`,
-                  background:
-                    "linear-gradient(90deg, color-mix(in oklab, var(--danger) 10%, transparent), color-mix(in oklab, var(--danger) 3%, transparent))",
-                  pointerEvents: "none",
-                }}
-              />
-              <div
-                className="relative grid items-center px-4 sm:px-5 py-2.5"
-                style={{ gridTemplateColumns: "1fr auto 70px 28px", gap: "12px" }}
-              >
+              <div className="flex items-baseline gap-3 mb-1.5">
                 <EditableText
                   value={item.name}
                   onCommit={(v) => onEdit(originalIndex, { name: v })}
-                  className="text-sm min-w-0"
+                  className="text-sm min-w-0 flex-1 leading-snug"
                   style={{
                     color: "var(--text-primary)",
                     overflowWrap: "anywhere",
@@ -1739,7 +1850,7 @@ function FeeTable({
                   }}
                 />
                 <div
-                  className="text-sm font-medium whitespace-nowrap text-right tabular-nums"
+                  className="text-sm sm:text-base font-medium whitespace-nowrap tabular-nums shrink-0"
                   style={{ color: "var(--danger)" }}
                 >
                   <EditableNumber
@@ -1750,20 +1861,30 @@ function FeeTable({
                     valueColor="var(--danger)"
                   />
                 </div>
+              </div>
+              <div className="flex items-center gap-2.5">
+                <div
+                  className="relative h-1.5 rounded-full flex-1 overflow-hidden"
+                  style={{
+                    backgroundColor:
+                      "color-mix(in oklab, var(--warm-sand) 65%, transparent)",
+                  }}
+                >
+                  <div
+                    className="absolute inset-y-0 left-0 rounded-full animate-bar-grow"
+                    style={{
+                      width: `${ofTotalPct}%`,
+                      background:
+                        "linear-gradient(90deg, var(--danger), color-mix(in oklab, var(--danger) 65%, var(--terracotta-2)))",
+                    }}
+                  />
+                </div>
                 <span
-                  className="text-xs text-right tabular-nums"
-                  style={{ color: "var(--text-secondary)" }}
+                  className="text-[11px] tabular-nums shrink-0"
+                  style={{ color: "var(--text-tertiary)" }}
                 >
-                  {salesPct.toFixed(2)}%
+                  {salesPct.toFixed(2)}% ของยอดขาย
                 </span>
-                <button
-                  onClick={() => onRemove(originalIndex)}
-                  aria-label={`ลบ ${item.name}`}
-                  className="opacity-30 hover:opacity-100 press-shrink transition-opacity justify-self-end"
-                  style={{ color: "var(--danger)" }}
-                >
-                  <X size={12} />
-                </button>
               </div>
             </li>
           );
@@ -1772,30 +1893,30 @@ function FeeTable({
 
       {/* Total row */}
       <div
-        className="grid items-center px-4 sm:px-5 py-3"
+        className="flex items-center gap-3 px-4 sm:px-5 py-3"
         style={{
-          gridTemplateColumns: "1fr auto 70px 28px",
-          gap: "12px",
           borderTop: "1px solid var(--border-soft)",
-          backgroundColor: "color-mix(in oklab, var(--warm-sand) 45%, transparent)",
+          backgroundColor: "color-mix(in oklab, var(--warm-sand) 35%, transparent)",
         }}
       >
-        <span className="text-sm font-medium" style={{ color: "var(--charcoal-warm)" }}>
-          รวม
+        <span
+          className="text-sm font-medium flex-1"
+          style={{ color: "var(--charcoal-warm)" }}
+        >
+          รวมค่าธรรมเนียมทั้งหมด
         </span>
         <span
-          className="text-sm font-medium whitespace-nowrap text-right tabular-nums"
+          className="text-[11px] tabular-nums"
+          style={{ color: "var(--text-tertiary)" }}
+        >
+          {totalSalesPct.toFixed(2)}%
+        </span>
+        <span
+          className="text-base font-medium whitespace-nowrap tabular-nums"
           style={{ color: "var(--danger)" }}
         >
           ฿{fmt(total)}
         </span>
-        <span
-          className="text-xs text-right tabular-nums"
-          style={{ color: "var(--text-secondary)" }}
-        >
-          {grossSales > 0 ? ((total / grossSales) * 100).toFixed(2) : "0.00"}%
-        </span>
-        <span />
       </div>
     </div>
   );

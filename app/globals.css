@@ -1,4 +1,19 @@
+@import url("https://fonts.googleapis.com/css2?family=TikTok+Sans:wght@400;500;600;700&display=swap");
 @import "tailwindcss";
+
+/* Limit "TikTok Sans" to Thai characters, digits, and the percent sign.
+   For Latin letters (A–Z, a–z) we shadow the family with Georgia so that
+   English text continues to render in the original serif. The browser picks
+   the @font-face whose unicode-range matches the codepoint; for ranges
+   covered by both the Google-imported face and this override, the later
+   declaration wins. */
+@font-face {
+  font-family: "TikTok Sans";
+  font-style: normal;
+  font-weight: 400 700;
+  src: local("Georgia"), local("Georgia Pro"), local("Times New Roman"), local("Times");
+  unicode-range: U+0041-005A, U+0061-007A;
+}
 
 :root {
   /* Light theme (default) — parchment canvas */
@@ -71,8 +86,44 @@
 body {
   background-color: var(--parchment);
   color: var(--near-black);
-  font-family: Georgia, serif;
+  font-family: "TikTok Sans", Georgia, serif;
   -webkit-tap-highlight-color: transparent;
+}
+
+/* ==========================================================================
+   Solid card surfaces — used by the result/summary view where glass blur
+   washed cards into the parchment background. Higher contrast = readable
+   on mobile in bright light.
+   ========================================================================== */
+
+.card {
+  background: var(--surface);
+  border: 1px solid var(--border-warm);
+  border-radius: var(--radius);
+  box-shadow:
+    0 1px 2px rgba(20, 20, 19, 0.04),
+    0 8px 24px rgba(20, 20, 19, 0.05);
+}
+
+[data-theme="dark"] .card {
+  box-shadow:
+    0 1px 2px rgba(0, 0, 0, 0.3),
+    0 8px 24px rgba(0, 0, 0, 0.35);
+}
+
+.card-hero {
+  background: linear-gradient(
+    135deg,
+    rgba(48, 48, 46, 0.98) 0%,
+    rgba(20, 20, 19, 1) 100%
+  );
+  border: 1px solid rgba(176, 174, 165, 0.18);
+  border-radius: var(--radius);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.08),
+    0 12px 36px rgba(20, 20, 19, 0.25),
+    0 2px 8px rgba(20, 20, 19, 0.12);
+  color: var(--ivory);
 }
 
 /* ==========================================================================

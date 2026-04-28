@@ -57,7 +57,7 @@ export default function ApiKeySetup({ onSave }: Props) {
           </div>
           <h1
             className="text-3xl font-medium leading-tight"
-            style={{ fontFamily: "Georgia, serif", color: "var(--near-black)" }}
+            style={{ color: "var(--near-black)" }}
           >
             Claribill
           </h1>
