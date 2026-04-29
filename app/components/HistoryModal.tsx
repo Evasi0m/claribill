@@ -11,6 +11,7 @@ import {
   TrendingDown,
   Minus,
   Archive,
+  Search,
 } from "lucide-react";
 import type { HistoryEntry, Platform } from "./types";
 import { PLATFORM_LABELS, PLATFORM_COLORS } from "../lib/platform";
@@ -75,6 +76,43 @@ function totalsOf(entries: HistoryEntry[]): Totals {
   };
 }
 
+type DateRange = "all" | "today" | "7d" | "30d" | "thisMonth" | "lastMonth";
+
+const DATE_RANGES: { value: DateRange; label: string }[] = [
+  { value: "all", label: "ทั้งหมด" },
+  { value: "today", label: "วันนี้" },
+  { value: "7d", label: "7 วัน" },
+  { value: "30d", label: "30 วัน" },
+  { value: "thisMonth", label: "เดือนนี้" },
+  { value: "lastMonth", label: "เดือนที่แล้ว" },
+];
+
+function inDateRange(ts: number, range: DateRange, now: Date): boolean {
+  if (range === "all") return true;
+  const d = new Date(ts);
+  if (range === "today") {
+    return (
+      d.getFullYear() === now.getFullYear() &&
+      d.getMonth() === now.getMonth() &&
+      d.getDate() === now.getDate()
+    );
+  }
+  if (range === "7d") {
+    return now.getTime() - ts <= 7 * 24 * 60 * 60 * 1000;
+  }
+  if (range === "30d") {
+    return now.getTime() - ts <= 30 * 24 * 60 * 60 * 1000;
+  }
+  if (range === "thisMonth") {
+    return d.getFullYear() === now.getFullYear() && d.getMonth() === now.getMonth();
+  }
+  if (range === "lastMonth") {
+    const last = new Date(now.getFullYear(), now.getMonth() - 1, 1);
+    return d.getFullYear() === last.getFullYear() && d.getMonth() === last.getMonth();
+  }
+  return true;
+}
+
 export default function HistoryModal({
   entries,
   onClose,
@@ -83,14 +121,19 @@ export default function HistoryModal({
   onClearAll,
 }: Props) {
   const [filter, setFilter] = useState<Platform | "all">("all");
+  const [dateRange, setDateRange] = useState<DateRange>("all");
+  const [query, setQuery] = useState("");
 
-  const filtered = useMemo(
-    () =>
-      filter === "all"
-        ? entries
-        : entries.filter((e) => (e.result.platform ?? "other") === filter),
-    [entries, filter],
-  );
+  const filtered = useMemo(() => {
+    const now = new Date();
+    const q = query.trim().toLowerCase();
+    return entries.filter((e) => {
+      if (filter !== "all" && (e.result.platform ?? "other") !== filter) return false;
+      if (!inDateRange(e.createdAt, dateRange, now)) return false;
+      if (q && !e.title.toLowerCase().includes(q)) return false;
+      return true;
+    });
+  }, [entries, filter, dateRange, query]);
 
   // Month-over-month comparison (current vs previous calendar month)
   const now = new Date();
@@ -180,7 +223,49 @@ export default function HistoryModal({
             />
           )}
 
-          {/* Filter chips */}
+          {/* Search */}
+          <div
+            className="flex items-center gap-2 px-3 py-2"
+            style={{
+              backgroundColor: "var(--surface)",
+              border: "1px solid var(--border-warm)",
+              borderRadius: "var(--radius)",
+            }}
+          >
+            <Search size={14} style={{ color: "var(--text-tertiary)" }} />
+            <input
+              type="search"
+              value={query}
+              onChange={(e) => setQuery(e.target.value)}
+              placeholder="ค้นหาในชื่อบิล..."
+              className="flex-1 bg-transparent outline-none text-sm"
+              style={{ color: "var(--text-primary)" }}
+            />
+            {query && (
+              <button
+                onClick={() => setQuery("")}
+                aria-label="ล้างคำค้นหา"
+                className="press-shrink"
+                style={{ color: "var(--text-tertiary)" }}
+              >
+                <X size={14} />
+              </button>
+            )}
+          </div>
+
+          {/* Date range chips */}
+          <div className="flex items-center gap-1.5 flex-wrap">
+            {DATE_RANGES.map((r) => (
+              <FilterChip
+                key={r.value}
+                label={r.label}
+                active={dateRange === r.value}
+                onClick={() => setDateRange(r.value)}
+              />
+            ))}
+          </div>
+
+          {/* Platform filter chips */}
           <div className="flex items-center gap-1.5 flex-wrap">
             <FilterChip
               label="ทั้งหมด"
@@ -209,8 +294,17 @@ export default function HistoryModal({
                 className="mx-auto mb-2"
                 style={{ color: "var(--stone-gray)" }}
               />
-              <p className="text-sm">ยังไม่มีประวัติ</p>
-              <p className="text-xs mt-1">วิเคราะห์สลิปเพื่อเริ่มสะสมประวัติ</p>
+              {entries.length === 0 ? (
+                <>
+                  <p className="text-sm">ยังไม่มีประวัติ</p>
+                  <p className="text-xs mt-1">วิเคราะห์สลิปเพื่อเริ่มสะสมประวัติ</p>
+                </>
+              ) : (
+                <>
+                  <p className="text-sm">ไม่พบรายการที่ตรงกับตัวกรอง</p>
+                  <p className="text-xs mt-1">ลองเปลี่ยนคำค้นหาหรือช่วงวันที่</p>
+                </>
+              )}
             </div>
           ) : (
             <ul className="space-y-2">
