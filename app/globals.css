@@ -34,6 +34,13 @@
   --danger: #b53333;
   --success: #1f7a38;
   --info: #3898ec;
+  /* Bright variants — usable on dark surfaces (HeroCard) where the
+     full-saturation versions look muddy. The default `:root` values are
+     the dark-surface ones; the dark theme block re-uses them as-is. */
+  --success-bright: #7ad99a;
+  --danger-bright: #ff8b7e;
+  --danger-soft: #ff9a8d;
+  --danger-deep: #8a2828;
 
   /* Semantic aliases — theme-aware */
   --surface: var(--ivory);          /* card surface */

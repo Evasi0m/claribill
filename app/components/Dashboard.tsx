@@ -983,7 +983,7 @@ function ErrorPanel({
           <div
             className="text-sm overflow-hidden transition-all duration-300"
             style={{
-              color: "#8a2828",
+              color: "var(--danger-deep)",
               maxHeight: expanded || !isLong ? "1200px" : "4.5rem",
               wordBreak: "break-word",
               overflowWrap: "anywhere",
@@ -1175,7 +1175,7 @@ function AnalysisDisplay({
             value={profit}
             valuePrefix={profitPositive ? "฿" : "−฿"}
             valueAbs
-            valueColor={profitPositive ? "#7ad99a" : "#ff8b7e"}
+            valueColor={profitPositive ? "var(--success-bright)" : "var(--danger-bright)"}
             marginPct={marginPct}
             costRate={costRate}
             cost={cost}
@@ -1479,7 +1479,7 @@ function HeroCard({
             width: 28,
             height: 28,
             backgroundColor: "rgba(255,255,255,0.08)",
-            color: profitPositive ? "#7ad99a" : "#ff7a6c",
+            color: profitPositive ? "var(--success-bright)" : "var(--danger-bright)",
           }}
         >
           <TrendingUp size={14} />
@@ -1505,7 +1505,7 @@ function HeroCard({
             backgroundColor: profitPositive
               ? "rgba(122, 217, 154, 0.16)"
               : "rgba(255, 122, 108, 0.18)",
-            color: profitPositive ? "#7ad99a" : "#ff9a8d",
+            color: profitPositive ? "var(--success-bright)" : "var(--danger-soft)",
           }}
         >
           {marginPct >= 0 ? "+" : ""}
