@@ -59,8 +59,8 @@ import {
   resultToCsv,
   downloadFile,
   exportNodeAsPng,
-  todayFilename,
 } from "../lib/export";
+import { fmtShortDate, todayFilename } from "../lib/format";
 
 interface Props {
   apiKey: string;
@@ -293,9 +293,7 @@ export default function Dashboard({ apiKey, onClearKey }: Props) {
   const persistHistory = (res: AnalysisResult, imageCount: number) => {
     const costRate = rateFor(platformRates, res.platform);
     const { profit } = computeProfit(res, costRate);
-    const d = new Date();
-    const pad = (n: number) => String(n).padStart(2, "0");
-    const datePart = `${pad(d.getDate())}/${pad(d.getMonth() + 1)} ${pad(d.getHours())}:${pad(d.getMinutes())}`;
+    const datePart = fmtShortDate(Date.now());
     const platformLabel = res.platform ? PLATFORM_LABELS[res.platform] : "บิล";
     const entry: HistoryEntry = {
       id: newHistoryId(),

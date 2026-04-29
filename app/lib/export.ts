@@ -1,16 +1,13 @@
 import type { AnalysisResult, HistoryEntry } from "../components/types";
 import { PLATFORM_LABELS } from "./platform";
+import { fmtIsoDate } from "./format";
+
+export { todayFilename } from "./format";
 
 function csvEscape(v: string | number): string {
   const s = String(v);
   if (/[,"\n]/.test(s)) return `"${s.replace(/"/g, '""')}"`;
   return s;
-}
-
-function fmtDate(ts: number): string {
-  const d = new Date(ts);
-  const pad = (n: number) => String(n).padStart(2, "0");
-  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}`;
 }
 
 /** CSV of a single analysis (summary rows + fee items). */
@@ -21,7 +18,7 @@ export function resultToCsv(
   const lines: string[] = [];
   lines.push(["ฟิลด์", "ค่า"].map(csvEscape).join(","));
   if (opts.title) lines.push(["ชื่อบิล", opts.title].map(csvEscape).join(","));
-  if (opts.createdAt) lines.push(["วันที่", fmtDate(opts.createdAt)].map(csvEscape).join(","));
+  if (opts.createdAt) lines.push(["วันที่", fmtIsoDate(opts.createdAt)].map(csvEscape).join(","));
   if (result.platform)
     lines.push(["แพลตฟอร์ม", PLATFORM_LABELS[result.platform]].map(csvEscape).join(","));
   lines.push(["ราคาป้าย", result.labelPrice ?? result.grossSales].map(csvEscape).join(","));
@@ -55,7 +52,7 @@ export function historyToCsv(entries: HistoryEntry[]): string {
   for (const e of entries) {
     lines.push(
       [
-        fmtDate(e.createdAt),
+        fmtIsoDate(e.createdAt),
         e.title,
         e.result.platform ? PLATFORM_LABELS[e.result.platform] : "—",
         e.imageCount,
@@ -101,10 +98,4 @@ export async function exportNodeAsPng(node: HTMLElement, filename: string) {
   document.body.appendChild(a);
   a.click();
   document.body.removeChild(a);
-}
-
-export function todayFilename(prefix: string, ext: string): string {
-  const d = new Date();
-  const pad = (n: number) => String(n).padStart(2, "0");
-  return `${prefix}-${d.getFullYear()}${pad(d.getMonth() + 1)}${pad(d.getDate())}-${pad(d.getHours())}${pad(d.getMinutes())}.${ext}`;
 }

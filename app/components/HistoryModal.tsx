@@ -16,7 +16,8 @@ import {
 } from "lucide-react";
 import type { HistoryEntry, Platform } from "./types";
 import { PLATFORM_LABELS, PLATFORM_COLORS } from "../lib/platform";
-import { historyToCsv, downloadFile, todayFilename } from "../lib/export";
+import { historyToCsv, downloadFile } from "../lib/export";
+import { fmtLongDate, todayFilename } from "../lib/format";
 
 interface Props {
   entries: HistoryEntry[];
@@ -32,12 +33,6 @@ function fmt(n: number) {
     minimumFractionDigits: 2,
     maximumFractionDigits: 2,
   }).format(n);
-}
-
-function fmtDate(ts: number): string {
-  const d = new Date(ts);
-  const pad = (n: number) => String(n).padStart(2, "0");
-  return `${pad(d.getDate())}/${pad(d.getMonth() + 1)}/${d.getFullYear()} ${pad(d.getHours())}:${pad(d.getMinutes())}`;
 }
 
 function monthKey(ts: number): string {
@@ -351,7 +346,7 @@ export default function HistoryModal({
                         className="text-[11px] mt-0.5"
                         style={{ color: "var(--text-tertiary)" }}
                       >
-                        {fmtDate(e.createdAt)} • {e.imageCount} รูป • ต้นทุน {e.costRate}%
+                        {fmtLongDate(e.createdAt)} • {e.imageCount} รูป • ต้นทุน {e.costRate}%
                       </p>
                       <div
                         className="mt-2 grid gap-x-3 gap-y-0.5 text-xs"
