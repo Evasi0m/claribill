@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import {
   X,
   History as HistoryIcon,
@@ -12,6 +12,7 @@ import {
   Minus,
   Archive,
   Search,
+  Pencil,
 } from "lucide-react";
 import type { HistoryEntry, Platform } from "./types";
 import { PLATFORM_LABELS, PLATFORM_COLORS } from "../lib/platform";
@@ -22,6 +23,7 @@ interface Props {
   onClose: () => void;
   onOpen: (entry: HistoryEntry) => void;
   onDelete: (id: string) => void;
+  onEditTitle: (id: string, title: string) => void;
   onClearAll: () => void;
 }
 
@@ -118,6 +120,7 @@ export default function HistoryModal({
   onClose,
   onOpen,
   onDelete,
+  onEditTitle,
   onClearAll,
 }: Props) {
   const [filter, setFilter] = useState<Platform | "all">("all");
@@ -328,12 +331,10 @@ export default function HistoryModal({
                     />
                     <div className="min-w-0 flex-1">
                       <div className="flex items-center gap-2 flex-wrap">
-                        <p
-                          className="text-sm font-medium truncate"
-                          style={{ color: "var(--text-primary)" }}
-                        >
-                          {e.title}
-                        </p>
+                        <EditableTitle
+                          value={e.title}
+                          onCommit={(v) => onEditTitle(e.id, v)}
+                        />
                         {e.result.platform && (
                           <span
                             className="text-[10px] px-1.5 py-0.5 rounded-full font-medium"
@@ -602,6 +603,85 @@ function MetricRow({
           : `${delta > 0 ? "+" : ""}${pctChange.toFixed(1)}%`}
       </span>
     </div>
+  );
+}
+
+function EditableTitle({
+  value,
+  onCommit,
+}: {
+  value: string;
+  onCommit: (v: string) => void;
+}) {
+  const [editing, setEditing] = useState(false);
+  const [draft, setDraft] = useState(value);
+  const inputRef = useRef<HTMLInputElement>(null);
+
+  useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    if (!editing) setDraft(value);
+  }, [value, editing]);
+
+  useEffect(() => {
+    if (editing) {
+      inputRef.current?.focus();
+      inputRef.current?.select();
+    }
+  }, [editing]);
+
+  const commit = () => {
+    const v = draft.trim();
+    if (v && v !== value) onCommit(v);
+    setEditing(false);
+  };
+
+  if (editing) {
+    return (
+      <input
+        ref={inputRef}
+        type="text"
+        value={draft}
+        onChange={(e) => setDraft(e.target.value)}
+        onBlur={commit}
+        onKeyDown={(e) => {
+          if (e.key === "Enter") e.currentTarget.blur();
+          if (e.key === "Escape") {
+            setDraft(value);
+            setEditing(false);
+          }
+        }}
+        onClick={(e) => e.stopPropagation()}
+        className="text-sm font-medium bg-transparent outline-none min-w-0 flex-1"
+        style={{
+          color: "var(--text-primary)",
+          borderBottom: "1px solid var(--terracotta)",
+        }}
+      />
+    );
+  }
+
+  return (
+    <button
+      type="button"
+      onClick={(e) => {
+        e.stopPropagation();
+        setEditing(true);
+      }}
+      className="group flex items-center gap-1 text-left min-w-0 truncate press-shrink"
+      title="แก้ไขชื่อ"
+    >
+      <span
+        className="text-sm font-medium truncate"
+        style={{ color: "var(--text-primary)" }}
+      >
+        {value}
+      </span>
+      <Pencil
+        size={10}
+        className="opacity-0 group-hover:opacity-50 transition-opacity shrink-0"
+        style={{ color: "var(--text-tertiary)" }}
+      />
+    </button>
   );
 }
 

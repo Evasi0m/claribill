@@ -495,6 +495,11 @@ export default function Dashboard({ apiKey, onClearKey }: Props) {
     }
   };
 
+  const renameHistoryEntry = (id: string, title: string) => {
+    const next = updateHistory(id, { title });
+    setHistory(next);
+  };
+
   const clearAllHistory = () => {
     clearHistory();
     setHistory([]);
@@ -692,6 +697,7 @@ export default function Dashboard({ apiKey, onClearKey }: Props) {
           onClose={() => setShowHistory(false)}
           onOpen={openHistoryEntry}
           onDelete={deleteHistoryEntry}
+          onEditTitle={renameHistoryEntry}
           onClearAll={clearAllHistory}
         />
       )}
