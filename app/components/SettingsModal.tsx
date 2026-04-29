@@ -10,6 +10,9 @@ import {
   Sun,
   Moon,
   Store,
+  Check,
+  AlertCircle,
+  Loader2,
 } from "lucide-react";
 import {
   PLATFORMS,
@@ -18,12 +21,14 @@ import {
   DEFAULT_COST_RATE,
   type PlatformRates,
 } from "../lib/platform";
+import { validateApiKey } from "../lib/gemini";
 import type { Theme } from "../lib/storage";
 import type { Platform } from "./types";
 
 interface Props {
   onClose: () => void;
   onClearKey: () => void;
+  apiKey: string;
   platformRates: PlatformRates;
   onPlatformRatesChange: (r: PlatformRates) => void;
   theme: Theme;
@@ -33,6 +38,7 @@ interface Props {
 export default function SettingsModal({
   onClose,
   onClearKey,
+  apiKey,
   platformRates,
   onPlatformRatesChange,
   theme,
@@ -45,6 +51,19 @@ export default function SettingsModal({
         string
       >,
   );
+  const [keyTest, setKeyTest] = useState<
+    | { state: "idle" }
+    | { state: "testing" }
+    | { state: "ok" }
+    | { state: "fail"; message: string }
+  >({ state: "idle" });
+
+  const testKey = async () => {
+    setKeyTest({ state: "testing" });
+    const result = await validateApiKey(apiKey);
+    if (result.ok) setKeyTest({ state: "ok" });
+    else setKeyTest({ state: "fail", message: result.message });
+  };
 
   const commitRate = (p: Platform) => {
     const n = Number(drafts[p]);
@@ -229,18 +248,64 @@ export default function SettingsModal({
 
         {/* API Key section */}
         <div className="card p-4 mb-4">
-          <p
-            className="text-xs font-medium mb-1.5"
-            style={{ color: "var(--charcoal-warm)" }}
-          >
-            API Key ปัจจุบัน
-          </p>
+          <div className="flex items-center justify-between mb-1.5">
+            <p
+              className="text-xs font-medium"
+              style={{ color: "var(--charcoal-warm)" }}
+            >
+              API Key ปัจจุบัน
+            </p>
+            <button
+              onClick={testKey}
+              disabled={keyTest.state === "testing"}
+              className="control-sm glass-chip"
+              style={{
+                color:
+                  keyTest.state === "ok"
+                    ? "var(--success)"
+                    : keyTest.state === "fail"
+                      ? "var(--danger)"
+                      : "var(--charcoal-warm)",
+                opacity: keyTest.state === "testing" ? 0.7 : 1,
+              }}
+            >
+              {keyTest.state === "testing" ? (
+                <>
+                  <Loader2 size={12} className="animate-spin-slow" />
+                  กำลังตรวจสอบ
+                </>
+              ) : keyTest.state === "ok" ? (
+                <>
+                  <Check size={12} />
+                  Key ใช้งานได้
+                </>
+              ) : keyTest.state === "fail" ? (
+                <>
+                  <AlertCircle size={12} />
+                  ตรวจอีกครั้ง
+                </>
+              ) : (
+                <>
+                  <RefreshCw size={12} />
+                  ทดสอบ Key
+                </>
+              )}
+            </button>
+          </div>
           <p
             className="text-xs font-mono tracking-wider"
             style={{ color: "var(--stone-gray)" }}
           >
             ••••••••••••••••••••••••••••••••
           </p>
+          {keyTest.state === "fail" && (
+            <p
+              className="mt-2 text-[11px] animate-slide-down"
+              style={{ color: "var(--danger)" }}
+            >
+              {keyTest.message}
+            </p>
+          )}
         </div>
 
         <div className="space-y-2">

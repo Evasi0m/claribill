@@ -681,6 +681,7 @@ export default function Dashboard({ apiKey, onClearKey }: Props) {
         <SettingsModal
           onClose={() => setShowSettings(false)}
           onClearKey={onClearKey}
+          apiKey={apiKey}
           platformRates={platformRates}
           onPlatformRatesChange={handlePlatformRatesChange}
           theme={theme}
