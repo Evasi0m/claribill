@@ -1,7 +1,15 @@
 "use client";
 
 import { useState } from "react";
-import { KeyRound, ExternalLink, ArrowRight, Sparkles, ShieldCheck } from "lucide-react";
+import {
+  KeyRound,
+  ExternalLink,
+  ArrowRight,
+  Sparkles,
+  ShieldCheck,
+  Loader2,
+} from "lucide-react";
+import { validateApiKey } from "../lib/gemini";
 
 interface Props {
   onSave: (key: string) => void;
@@ -10,8 +18,9 @@ interface Props {
 export default function ApiKeySetup({ onSave }: Props) {
   const [key, setKey] = useState("");
   const [error, setError] = useState("");
+  const [validating, setValidating] = useState(false);
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     const trimmed = key.trim();
     if (!trimmed) {
@@ -20,6 +29,14 @@ export default function ApiKeySetup({ onSave }: Props) {
     }
     if (!trimmed.startsWith("AI")) {
       setError("API Key ของ Google Gemini มักขึ้นต้นด้วย 'AI' — กรุณาตรวจสอบอีกครั้ง");
+      return;
+    }
+    setValidating(true);
+    setError("");
+    const result = await validateApiKey(trimmed);
+    setValidating(false);
+    if (!result.ok) {
+      setError(result.message);
       return;
     }
     onSave(trimmed);
@@ -101,11 +118,21 @@ export default function ApiKeySetup({ onSave }: Props) {
 
           <button
             type="submit"
+            disabled={validating}
             className="control glass-primary w-full"
-            style={{ height: 52 }}
+            style={{ height: 52, opacity: validating ? 0.7 : 1 }}
           >
-            Save &amp; Start
-            <ArrowRight size={16} />
+            {validating ? (
+              <>
+                <Loader2 size={16} className="animate-spin-slow" />
+                กำลังตรวจสอบ Key...
+              </>
+            ) : (
+              <>
+                Save &amp; Start
+                <ArrowRight size={16} />
+              </>
+            )}
           </button>
         </form>
 
