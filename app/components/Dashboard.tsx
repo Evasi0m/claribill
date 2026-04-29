@@ -51,8 +51,10 @@ import {
   PLATFORM_LABELS,
   PLATFORM_COLORS,
   rateFor,
+  DEFAULT_COST_RATE,
   type PlatformRates,
 } from "../lib/platform";
+import { computeProfit } from "../lib/profit";
 import {
   resultToCsv,
   downloadFile,
@@ -192,8 +194,7 @@ export default function Dashboard({ apiKey, onClearKey }: Props) {
     // Re-derive cost/profit live when user tweaks — result view reads from state directly
     if (result && currentEntryId) {
       const costRate = rateFor(r, result.platform);
-      const cost = (result.labelPrice ?? result.grossSales) * (1 - costRate / 100);
-      const profit = result.netAmount - cost;
+      const { profit } = computeProfit(result, costRate);
       const next = updateHistory(currentEntryId, { costRate, profit });
       setHistory(next);
     }
@@ -291,8 +292,7 @@ export default function Dashboard({ apiKey, onClearKey }: Props) {
 
   const persistHistory = (res: AnalysisResult, imageCount: number) => {
     const costRate = rateFor(platformRates, res.platform);
-    const cost = (res.labelPrice ?? res.grossSales) * (1 - costRate / 100);
-    const profit = res.netAmount - cost;
+    const { profit } = computeProfit(res, costRate);
     const d = new Date();
     const pad = (n: number) => String(n).padStart(2, "0");
     const datePart = `${pad(d.getDate())}/${pad(d.getMonth() + 1)} ${pad(d.getHours())}:${pad(d.getMinutes())}`;
@@ -391,8 +391,7 @@ export default function Dashboard({ apiKey, onClearKey }: Props) {
       const merged = recomputePercentages({ ...prev, ...patch });
       if (currentEntryId) {
         const costRate = rateFor(platformRates, merged.platform);
-        const cost = (merged.labelPrice ?? merged.grossSales) * (1 - costRate / 100);
-        const profit = merged.netAmount - cost;
+        const { profit } = computeProfit(merged, costRate);
         const next = updateHistory(currentEntryId, {
           result: merged,
           costRate,
@@ -413,8 +412,7 @@ export default function Dashboard({ apiKey, onClearKey }: Props) {
       const merged = recomputePercentages({ ...prev, feeItems: items, totalFees });
       if (currentEntryId) {
         const costRate = rateFor(platformRates, merged.platform);
-        const cost = (merged.labelPrice ?? merged.grossSales) * (1 - costRate / 100);
-        const profit = merged.netAmount - cost;
+        const { profit } = computeProfit(merged, costRate);
         const next = updateHistory(currentEntryId, {
           result: merged,
           costRate,
@@ -437,8 +435,7 @@ export default function Dashboard({ apiKey, onClearKey }: Props) {
       const merged = recomputePercentages({ ...prev, feeItems: items, totalFees });
       if (currentEntryId) {
         const costRate = rateFor(platformRates, merged.platform);
-        const cost = (merged.labelPrice ?? merged.grossSales) * (1 - costRate / 100);
-        const profit = merged.netAmount - cost;
+        const { profit } = computeProfit(merged, costRate);
         const next = updateHistory(currentEntryId, {
           result: merged,
           costRate,
@@ -462,8 +459,7 @@ export default function Dashboard({ apiKey, onClearKey }: Props) {
       const merged = recomputePercentages({ ...prev, feeItems: items, totalFees });
       if (currentEntryId) {
         const costRate = rateFor(platformRates, merged.platform);
-        const cost = (merged.labelPrice ?? merged.grossSales) * (1 - costRate / 100);
-        const profit = merged.netAmount - cost;
+        const { profit } = computeProfit(merged, costRate);
         const next = updateHistory(currentEntryId, {
           result: merged,
           costRate,
@@ -508,10 +504,13 @@ export default function Dashboard({ apiKey, onClearKey }: Props) {
 
   /* ------------- export handlers ------------- */
 
-  const costRate = result ? rateFor(platformRates, result.platform) : 58;
-  const labelPrice = result ? (result.labelPrice ?? result.grossSales) : 0;
-  const cost = labelPrice * (1 - costRate / 100);
-  const profit = result ? result.netAmount - cost : 0;
+  const costRate = result ? rateFor(platformRates, result.platform) : DEFAULT_COST_RATE;
+  const breakdown = result
+    ? computeProfit(result, costRate)
+    : { basis: 0, cost: 0, profit: 0, marginPct: 0 };
+  const labelPrice = breakdown.basis;
+  const cost = breakdown.cost;
+  const profit = breakdown.profit;
 
   const exportCsv = () => {
     if (!result) return;
