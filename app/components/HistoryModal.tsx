@@ -18,6 +18,7 @@ import type { HistoryEntry, Platform } from "./types";
 import { PLATFORM_LABELS, PLATFORM_COLORS } from "../lib/platform";
 import { historyToCsv, downloadFile } from "../lib/export";
 import { fmtLongDate, todayFilename } from "../lib/format";
+import { useModal } from "../lib/useModal";
 
 interface Props {
   entries: HistoryEntry[];
@@ -156,6 +157,8 @@ export default function HistoryModal({
     );
   };
 
+  const panelRef = useModal(onClose);
+
   return (
     <div
       className="fixed inset-0 z-50 flex items-center justify-center p-4 animate-fade-in"
@@ -165,10 +168,15 @@ export default function HistoryModal({
         WebkitBackdropFilter: "blur(8px)",
       }}
       onClick={onClose}
+      role="dialog"
+      aria-modal="true"
+      aria-label="ประวัติการวิเคราะห์"
     >
       <div
+        ref={panelRef}
+        tabIndex={-1}
         className="glass-strong w-full max-w-xl animate-scale-in flex flex-col"
-        style={{ maxHeight: "92vh" }}
+        style={{ maxHeight: "92vh", outline: "none" }}
         onClick={(e) => e.stopPropagation()}
       >
         {/* Header */}

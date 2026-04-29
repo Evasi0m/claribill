@@ -22,6 +22,7 @@ import {
   type PlatformRates,
 } from "../lib/platform";
 import { validateApiKey } from "../lib/gemini";
+import { useModal } from "../lib/useModal";
 import type { Theme } from "../lib/storage";
 import type { Platform } from "./types";
 
@@ -87,6 +88,8 @@ export default function SettingsModal({
     );
   };
 
+  const panelRef = useModal(onClose);
+
   return (
     <div
       className="fixed inset-0 z-50 flex items-center justify-center p-4 animate-fade-in"
@@ -96,9 +99,15 @@ export default function SettingsModal({
         WebkitBackdropFilter: "blur(8px)",
       }}
       onClick={onClose}
+      role="dialog"
+      aria-modal="true"
+      aria-label="Settings"
     >
       <div
+        ref={panelRef}
+        tabIndex={-1}
         className="glass-strong w-full max-w-md p-6 animate-scale-in max-h-[92vh] overflow-y-auto"
+        style={{ outline: "none" }}
         onClick={(e) => e.stopPropagation()}
       >
         {/* Header */}
