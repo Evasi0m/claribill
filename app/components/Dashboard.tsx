@@ -28,6 +28,7 @@ import {
   Pencil,
   Store,
   Save,
+  RefreshCw,
 } from "lucide-react";
 import SettingsModal from "./SettingsModal";
 import HistoryModal from "./HistoryModal";
@@ -359,6 +360,10 @@ export default function Dashboard({ apiKey, onClearKey }: Props) {
       const msg = err instanceof Error ? err.message : "เกิดข้อผิดพลาดที่ไม่ทราบสาเหตุ";
       if (msg.includes("API_KEY_INVALID") || msg.includes("API key not valid")) {
         setError("API Key ไม่ถูกต้อง กรุณาตรวจสอบและอัปเดตใน Settings");
+        // Auto-open Settings so the seller can fix the key without an
+        // extra step. They've already hit a hard wall — don't make them
+        // hunt for the gear icon.
+        setShowSettings(true);
       } else if (isRetryableError(msg)) {
         setError(
           `ลองทุกโมเดลแล้วไม่สำเร็จ (${AI_MODELS.join(", ")}) — โควต้าหมดหรือโมเดลไม่พร้อมใช้งาน กรุณารอสักครู่ เปลี่ยน API key หรือเปิด billing ใน Google AI Studio\n\nรายละเอียด: ${msg}`,
@@ -638,7 +643,14 @@ export default function Dashboard({ apiKey, onClearKey }: Props) {
         {loading && <LoadingPanel modelName={activeModel} progress={progress} />}
 
         {/* Error */}
-        {error && <ErrorPanel message={error} />}
+        {error && (
+          <ErrorPanel
+            message={error}
+            canRetry={images.length > 0 && !loading}
+            onRetry={handleAnalyze}
+            onOpenSettings={() => setShowSettings(true)}
+          />
+        )}
 
         {/* Results */}
         {result && (
@@ -910,10 +922,24 @@ function LoadingPanel({
   );
 }
 
-function ErrorPanel({ message }: { message: string }) {
+function ErrorPanel({
+  message,
+  canRetry,
+  onRetry,
+  onOpenSettings,
+}: {
+  message: string;
+  canRetry: boolean;
+  onRetry: () => void;
+  onOpenSettings: () => void;
+}) {
   const [copied, setCopied] = useState(false);
   const [expanded, setExpanded] = useState(false);
   const isLong = message.length > 200;
+  const isApiKeyError =
+    message.includes("API Key ไม่ถูกต้อง") ||
+    message.includes("API_KEY_INVALID") ||
+    message.includes("API key not valid");
 
   useEffect(() => {
     if (!copied) return;
@@ -964,6 +990,35 @@ function ErrorPanel({ message }: { message: string }) {
             {message}
           </div>
           <div className="flex items-center gap-2 mt-3 flex-wrap">
+            {isApiKeyError ? (
+              <button
+                onClick={onOpenSettings}
+                className="control-sm"
+                style={{
+                  backgroundColor: "var(--danger)",
+                  color: "var(--ivory)",
+                  border: "1px solid var(--danger)",
+                }}
+              >
+                <Settings size={12} />
+                เปิด Settings
+              </button>
+            ) : (
+              canRetry && (
+                <button
+                  onClick={onRetry}
+                  className="control-sm"
+                  style={{
+                    backgroundColor: "var(--danger)",
+                    color: "var(--ivory)",
+                    border: "1px solid var(--danger)",
+                  }}
+                >
+                  <RefreshCw size={12} />
+                  ลองอีกครั้ง
+                </button>
+              )
+            )}
             <button
               onClick={copy}
               className="control-sm"
