@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useRef, useState } from "react";
 import {
   X,
   Trash2,
@@ -13,6 +13,9 @@ import {
   Check,
   AlertCircle,
   Loader2,
+  Download,
+  Upload,
+  Database,
 } from "lucide-react";
 import {
   PLATFORMS,
@@ -23,6 +26,9 @@ import {
 } from "../lib/platform";
 import { validateApiKey } from "../lib/gemini";
 import { useModal } from "../lib/useModal";
+import { buildBackup } from "../lib/backup";
+import { downloadFile } from "../lib/export";
+import { todayFilename } from "../lib/format";
 import type { Theme } from "../lib/storage";
 import type { Platform } from "./types";
 
@@ -34,6 +40,7 @@ interface Props {
   onPlatformRatesChange: (r: PlatformRates) => void;
   theme: Theme;
   onThemeChange: (t: Theme) => void;
+  onRestore: (bundle: unknown) => void;
 }
 
 export default function SettingsModal({
@@ -44,7 +51,43 @@ export default function SettingsModal({
   onPlatformRatesChange,
   theme,
   onThemeChange,
+  onRestore,
 }: Props) {
+  const restoreInputRef = useRef<HTMLInputElement>(null);
+  const [restoreError, setRestoreError] = useState<string | null>(null);
+
+  const handleExport = () => {
+    const bundle = buildBackup();
+    const json = JSON.stringify(bundle, null, 2);
+    downloadFile(
+      todayFilename("claribill-backup", "json"),
+      new Blob([json], { type: "application/json" }),
+      "application/json",
+    );
+  };
+
+  const handleImportFile = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    setRestoreError(null);
+    const file = e.target.files?.[0];
+    e.target.value = "";
+    if (!file) return;
+    try {
+      const text = await file.text();
+      const bundle = JSON.parse(text);
+      const count = Array.isArray(bundle?.history) ? bundle.history.length : 0;
+      if (
+        !confirm(
+          `กู้คืนจากไฟล์นี้? ข้อมูลปัจจุบัน (ประวัติ + การตั้งค่า) จะถูกแทนที่ด้วยข้อมูลในไฟล์ (${count} รายการ)`,
+        )
+      ) {
+        return;
+      }
+      onRestore(bundle);
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      setRestoreError(`กู้คืนไม่สำเร็จ: ${msg}`);
+    }
+  };
   const [drafts, setDrafts] = useState<Record<Platform, string>>(
     () =>
       Object.fromEntries(PLATFORMS.map((p) => [p, String(platformRates[p])])) as Record<
@@ -313,6 +356,55 @@ export default function SettingsModal({
               style={{ color: "var(--danger)" }}
             >
               {keyTest.message}
+            </p>
+          )}
+        </div>
+
+        {/* Backup / Restore */}
+        <div className="card p-4 mb-4">
+          <div className="flex items-center gap-1.5 mb-2.5">
+            <Database size={12} style={{ color: "var(--terracotta)" }} />
+            <p
+              className="text-xs font-medium"
+              style={{ color: "var(--charcoal-warm)" }}
+            >
+              สำรอง / กู้คืนข้อมูล
+            </p>
+          </div>
+          <p className="text-[11px] mb-3" style={{ color: "var(--stone-gray)" }}>
+            สำรองประวัติ + การตั้งค่าเป็นไฟล์ JSON (ไม่รวม API Key) — ใช้สำหรับย้ายเครื่องหรือกันข้อมูลหายเมื่อ clear browser data
+          </p>
+          <div className="flex items-center gap-2">
+            <button
+              onClick={handleExport}
+              className="control-sm glass-chip flex-1"
+              style={{ color: "var(--charcoal-warm)" }}
+            >
+              <Download size={12} />
+              สำรองข้อมูล
+            </button>
+            <button
+              onClick={() => restoreInputRef.current?.click()}
+              className="control-sm glass-chip flex-1"
+              style={{ color: "var(--charcoal-warm)" }}
+            >
+              <Upload size={12} />
+              กู้คืน
+            </button>
+            <input
+              ref={restoreInputRef}
+              type="file"
+              accept="application/json,.json"
+              className="hidden"
+              onChange={handleImportFile}
+            />
+          </div>
+          {restoreError && (
+            <p
+              className="mt-2 text-[11px] animate-slide-down"
+              style={{ color: "var(--danger)" }}
+            >
+              {restoreError}
             </p>
           )}
         </div>

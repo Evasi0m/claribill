@@ -55,6 +55,7 @@ import {
   type PlatformRates,
 } from "../lib/platform";
 import { computeProfit } from "../lib/profit";
+import { applyBackup } from "../lib/backup";
 import {
   resultToCsv,
   downloadFile,
@@ -204,6 +205,21 @@ export default function Dashboard({ apiKey, onClearKey }: Props) {
     setTheme(t);
     saveTheme(t);
     applyTheme(t);
+  };
+
+  const handleRestore = (bundle: unknown) => {
+    const next = applyBackup(bundle);
+    setHistory(next.history);
+    setPlatformRates(next.platformRates);
+    setTheme(next.theme);
+    applyTheme(next.theme);
+    // Clear the active result if its entry no longer exists in the
+    // restored history — otherwise the seller would see ghost numbers
+    // that can't be edited.
+    if (currentEntryId && !next.history.find((h) => h.id === currentEntryId)) {
+      setCurrentEntryId(null);
+      setResult(null);
+    }
   };
 
   const addFiles = useCallback((files: FileList | File[]) => {
@@ -686,6 +702,7 @@ export default function Dashboard({ apiKey, onClearKey }: Props) {
           onPlatformRatesChange={handlePlatformRatesChange}
           theme={theme}
           onThemeChange={handleThemeChange}
+          onRestore={handleRestore}
         />
       )}
 
