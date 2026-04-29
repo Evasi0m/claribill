@@ -2,6 +2,9 @@ export interface FeeItem {
   name: string;
   amount: number;
   percentage: number;
+  /** True if the seller added this row manually (AI didn't extract it). Only
+   *  user-added rows are deletable from the FeeTable. */
+  userAdded?: boolean;
 }
 
 export type Platform = "shopee" | "lazada" | "tiktok" | "other";

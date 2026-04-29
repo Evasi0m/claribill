@@ -421,6 +421,55 @@ export default function Dashboard({ apiKey, onClearKey }: Props) {
     });
   };
 
+  const addFeeItem = () => {
+    setResult((prev) => {
+      if (!prev) return prev;
+      const items: FeeItem[] = [
+        ...prev.feeItems,
+        { name: "ค่าธรรมเนียมเพิ่มเติม", amount: 0, percentage: 0, userAdded: true },
+      ];
+      const totalFees = items.reduce((s, f) => s + (Number(f.amount) || 0), 0);
+      const merged = recomputePercentages({ ...prev, feeItems: items, totalFees });
+      if (currentEntryId) {
+        const costRate = rateFor(platformRates, merged.platform);
+        const cost = (merged.labelPrice ?? merged.grossSales) * (1 - costRate / 100);
+        const profit = merged.netAmount - cost;
+        const next = updateHistory(currentEntryId, {
+          result: merged,
+          costRate,
+          profit,
+        });
+        setHistory(next);
+      }
+      return merged;
+    });
+  };
+
+  const removeFeeItem = (index: number) => {
+    setResult((prev) => {
+      if (!prev) return prev;
+      const target = prev.feeItems[index];
+      // Only remove items the seller added themselves — AI-extracted rows
+      // stay locked so totalFees can't be silently understated.
+      if (!target?.userAdded) return prev;
+      const items = prev.feeItems.filter((_, i) => i !== index);
+      const totalFees = items.reduce((s, f) => s + (Number(f.amount) || 0), 0);
+      const merged = recomputePercentages({ ...prev, feeItems: items, totalFees });
+      if (currentEntryId) {
+        const costRate = rateFor(platformRates, merged.platform);
+        const cost = (merged.labelPrice ?? merged.grossSales) * (1 - costRate / 100);
+        const profit = merged.netAmount - cost;
+        const next = updateHistory(currentEntryId, {
+          result: merged,
+          costRate,
+          profit,
+        });
+        setHistory(next);
+      }
+      return merged;
+    });
+  };
+
   const changePlatform = (p: Platform) => updateResult({ platform: p });
 
   /* ------------- history handlers ------------- */
@@ -603,6 +652,8 @@ export default function Dashboard({ apiKey, onClearKey }: Props) {
               profit={profit}
               onUpdateResult={updateResult}
               onUpdateFeeItem={updateFeeItem}
+              onAddFeeItem={addFeeItem}
+              onRemoveFeeItem={removeFeeItem}
               onChangePlatform={changePlatform}
               onExportCsv={exportCsv}
               onExportPng={exportPng}
@@ -977,6 +1028,8 @@ function AnalysisDisplay({
   profit,
   onUpdateResult,
   onUpdateFeeItem,
+  onAddFeeItem,
+  onRemoveFeeItem,
   onChangePlatform,
   onExportCsv,
   onExportPng,
@@ -990,6 +1043,8 @@ function AnalysisDisplay({
   profit: number;
   onUpdateResult: (patch: Partial<AnalysisResult>) => void;
   onUpdateFeeItem: (index: number, patch: Partial<FeeItem>) => void;
+  onAddFeeItem: () => void;
+  onRemoveFeeItem: (index: number) => void;
   onChangePlatform: (p: Platform) => void;
   onExportCsv: () => void;
   onExportPng: () => void;
@@ -1127,15 +1182,16 @@ function AnalysisDisplay({
         onEditLabelPrice={(v) => onUpdateResult({ labelPrice: v })}
       />
 
-      {/* Fee Table */}
-      {result.feeItems && result.feeItems.length > 0 && (
-        <FeeTable
-          items={result.feeItems}
-          grossSales={result.grossSales}
-          fmt={fmt}
-          onEdit={onUpdateFeeItem}
-        />
-      )}
+      {/* Fee Table — always rendered so the seller can add fees the AI
+          missed even on bills where it returned an empty list. */}
+      <FeeTable
+        items={result.feeItems ?? []}
+        grossSales={result.grossSales}
+        fmt={fmt}
+        onEdit={onUpdateFeeItem}
+        onAdd={onAddFeeItem}
+        onRemove={onRemoveFeeItem}
+      />
     </div>
   );
 }
@@ -1775,11 +1831,15 @@ function FeeTable({
   grossSales,
   fmt,
   onEdit,
+  onAdd,
+  onRemove,
 }: {
   items: FeeItem[];
   grossSales: number;
   fmt: (n: number) => string;
   onEdit: (index: number, patch: Partial<FeeItem>) => void;
+  onAdd: () => void;
+  onRemove: (index: number) => void;
 }) {
   // Sort desc by amount but keep original index for editing
   const sortedWithIndex = items
@@ -1787,6 +1847,7 @@ function FeeTable({
     .sort((a, b) => b.item.amount - a.item.amount);
   const total = items.reduce((s, i) => s + i.amount, 0);
   const totalSalesPct = grossSales > 0 ? (total / grossSales) * 100 : 0;
+  const hasItems = items.length > 0;
 
   return (
     <div className="card overflow-hidden animate-slide-up">
@@ -1817,7 +1878,9 @@ function FeeTable({
             className="text-[11px] tabular-nums"
             style={{ color: "var(--text-tertiary)" }}
           >
-            {items.length} รายการ · รวม {totalSalesPct.toFixed(2)}% ของยอดขาย
+            {hasItems
+              ? `${items.length} รายการ · รวม ${totalSalesPct.toFixed(2)}% ของยอดขาย`
+              : "ยังไม่มีรายการ — เพิ่มเองได้ถ้า AI ตกหล่น"}
           </p>
         </div>
       </div>
@@ -1825,76 +1888,130 @@ function FeeTable({
       {/* Rows — mobile-first stacked layout: name + amount on top, bar + %
           underneath. Bar length = item amount as a share of total fees, so
           the heaviest fee fills the bar and the rest are visibly relative. */}
-      <ul className="px-3 sm:px-4 py-2">
-        {sortedWithIndex.map(({ item, originalIndex }, i) => {
-          const ofTotalPct = total > 0 ? (item.amount / total) * 100 : 0;
-          const salesPct =
-            item.percentage ||
-            (grossSales > 0 ? (item.amount / grossSales) * 100 : 0);
-          return (
-            <li
-              key={`${item.name}-${originalIndex}`}
-              className="animate-fade-in py-2.5"
-              style={{
-                animationDelay: `${0.15 + i * 0.04}s`,
-                borderTop:
-                  i === 0
-                    ? undefined
-                    : "1px solid color-mix(in oklab, var(--border-soft) 60%, transparent)",
-              }}
-            >
-              <div className="flex items-baseline gap-3 mb-1.5">
-                <EditableText
-                  value={item.name}
-                  onCommit={(v) => onEdit(originalIndex, { name: v })}
-                  className="text-sm min-w-0 flex-1 leading-snug"
-                  style={{
-                    color: "var(--text-primary)",
-                    overflowWrap: "anywhere",
-                    wordBreak: "break-word",
-                  }}
-                />
-                <div
-                  className="text-sm sm:text-base font-medium whitespace-nowrap tabular-nums shrink-0"
-                  style={{ color: "var(--danger)" }}
-                >
-                  <EditableNumber
-                    value={item.amount}
-                    valuePrefix="฿"
-                    onCommit={(v) => onEdit(originalIndex, { amount: v })}
-                    fmt={fmt}
-                    valueColor="var(--danger)"
-                  />
-                </div>
-              </div>
-              <div className="flex items-center gap-2.5">
-                <div
-                  className="relative h-1.5 rounded-full flex-1 overflow-hidden"
-                  style={{
-                    backgroundColor:
-                      "color-mix(in oklab, var(--warm-sand) 65%, transparent)",
-                  }}
-                >
+      {hasItems && (
+        <ul className="px-3 sm:px-4 py-2">
+          {sortedWithIndex.map(({ item, originalIndex }, i) => {
+            const ofTotalPct = total > 0 ? (item.amount / total) * 100 : 0;
+            const salesPct =
+              item.percentage ||
+              (grossSales > 0 ? (item.amount / grossSales) * 100 : 0);
+            const isZero = item.amount === 0;
+            return (
+              <li
+                key={`fee-${originalIndex}`}
+                className="animate-fade-in py-2.5"
+                style={{
+                  animationDelay: `${0.15 + i * 0.04}s`,
+                  borderTop:
+                    i === 0
+                      ? undefined
+                      : "1px solid color-mix(in oklab, var(--border-soft) 60%, transparent)",
+                }}
+              >
+                <div className="flex items-baseline gap-2 mb-1.5">
+                  <div className="min-w-0 flex-1">
+                    <EditableText
+                      value={item.name}
+                      onCommit={(v) => onEdit(originalIndex, { name: v })}
+                      className="text-sm leading-snug"
+                      style={{
+                        color: "var(--text-primary)",
+                        overflowWrap: "anywhere",
+                        wordBreak: "break-word",
+                        display: "-webkit-box",
+                        WebkitLineClamp: 2,
+                        WebkitBoxOrient: "vertical",
+                        overflow: "hidden",
+                      }}
+                    />
+                    {item.userAdded && (
+                      <span
+                        className="text-[10px] mt-0.5 inline-flex items-center gap-1 px-1.5 py-0.5 rounded-full"
+                        style={{
+                          backgroundColor:
+                            "color-mix(in oklab, var(--info) 14%, transparent)",
+                          color: "var(--info)",
+                        }}
+                      >
+                        <Plus size={9} />
+                        เพิ่มเอง
+                      </span>
+                    )}
+                  </div>
                   <div
-                    className="absolute inset-y-0 left-0 rounded-full animate-bar-grow"
-                    style={{
-                      width: `${ofTotalPct}%`,
-                      background:
-                        "linear-gradient(90deg, var(--danger), color-mix(in oklab, var(--danger) 65%, var(--terracotta-2)))",
-                    }}
-                  />
+                    className="text-sm sm:text-base font-medium whitespace-nowrap tabular-nums shrink-0"
+                    style={{ color: isZero ? "var(--text-tertiary)" : "var(--danger)" }}
+                  >
+                    <EditableNumber
+                      value={item.amount}
+                      valuePrefix="฿"
+                      onCommit={(v) => onEdit(originalIndex, { amount: v })}
+                      fmt={fmt}
+                      valueColor={isZero ? "var(--text-tertiary)" : "var(--danger)"}
+                    />
+                  </div>
+                  {item.userAdded && (
+                    <button
+                      onClick={() => onRemove(originalIndex)}
+                      aria-label={`ลบ ${item.name}`}
+                      className="control-icon shrink-0 press-shrink"
+                      style={{
+                        width: 24,
+                        height: 24,
+                        color: "var(--text-tertiary)",
+                        backgroundColor: "transparent",
+                      }}
+                    >
+                      <X size={12} />
+                    </button>
+                  )}
                 </div>
-                <span
-                  className="text-[11px] tabular-nums shrink-0"
-                  style={{ color: "var(--text-tertiary)" }}
-                >
-                  {salesPct.toFixed(2)}% ของยอดขาย
-                </span>
-              </div>
-            </li>
-          );
-        })}
-      </ul>
+                <div className="flex items-center gap-2.5">
+                  <div
+                    className="relative h-1.5 rounded-full flex-1 overflow-hidden"
+                    style={{
+                      backgroundColor:
+                        "color-mix(in oklab, var(--warm-sand) 65%, transparent)",
+                    }}
+                  >
+                    {ofTotalPct > 0 && (
+                      <div
+                        className="absolute inset-y-0 left-0 rounded-full animate-bar-grow"
+                        style={{
+                          width: `${ofTotalPct}%`,
+                          background:
+                            "linear-gradient(90deg, var(--danger), color-mix(in oklab, var(--danger) 65%, var(--terracotta-2)))",
+                        }}
+                      />
+                    )}
+                  </div>
+                  <span
+                    className="text-[11px] tabular-nums shrink-0"
+                    style={{ color: "var(--text-tertiary)" }}
+                  >
+                    {isZero ? "—" : `${salesPct.toFixed(2)}% ของยอดขาย`}
+                  </span>
+                </div>
+              </li>
+            );
+          })}
+        </ul>
+      )}
+
+      {/* Add row button */}
+      <button
+        onClick={onAdd}
+        className="w-full flex items-center justify-center gap-1.5 px-4 sm:px-5 py-3 text-sm press-shrink"
+        style={{
+          color: "var(--terracotta)",
+          backgroundColor: "color-mix(in oklab, var(--terracotta) 5%, transparent)",
+          borderTop: hasItems ? "1px solid var(--border-soft)" : undefined,
+          borderBottom: hasItems ? undefined : "1px solid var(--border-soft)",
+        }}
+      >
+        <Plus size={14} />
+        เพิ่มรายการค่าธรรมเนียม
+      </button>
 
       {/* Total row */}
       <div
