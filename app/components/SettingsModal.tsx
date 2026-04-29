@@ -109,7 +109,7 @@ export default function SettingsModal({
         </div>
 
         {/* Theme toggle */}
-        <div className="glass-chip p-4 mb-3">
+        <div className="card p-4 mb-3">
           <p
             className="text-xs font-medium mb-2.5"
             style={{ color: "var(--charcoal-warm)" }}
@@ -133,7 +133,7 @@ export default function SettingsModal({
         </div>
 
         {/* Per-platform cost rates */}
-        <div className="glass-chip p-4 mb-3">
+        <div className="card p-4 mb-3">
           <div className="flex items-center justify-between mb-2.5">
             <div className="flex items-center gap-1.5">
               <Percent size={12} style={{ color: "var(--terracotta)" }} />
@@ -228,7 +228,7 @@ export default function SettingsModal({
         </div>
 
         {/* API Key section */}
-        <div className="glass-chip p-4 mb-4">
+        <div className="card p-4 mb-4">
           <p
             className="text-xs font-medium mb-1.5"
             style={{ color: "var(--charcoal-warm)" }}

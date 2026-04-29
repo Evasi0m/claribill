@@ -201,7 +201,7 @@ export default function HistoryModal({
           {/* Entries */}
           {filtered.length === 0 ? (
             <div
-              className="glass-chip p-8 text-center"
+              className="card p-8 text-center"
               style={{ color: "var(--text-tertiary)" }}
             >
               <Archive
@@ -217,7 +217,7 @@ export default function HistoryModal({
               {filtered.map((e, idx) => (
                 <li
                   key={e.id}
-                  className="glass p-3 animate-fade-in"
+                  className="card p-3 animate-fade-in"
                   style={{ animationDelay: `${Math.min(idx * 0.03, 0.4)}s` }}
                 >
                   <div className="flex items-start gap-3">
@@ -424,7 +424,7 @@ function ComparisonCard({
   ];
 
   return (
-    <div className="glass p-4">
+    <div className="card p-4">
       <div className="flex items-center justify-between mb-3">
         <p
           className="text-sm font-medium"

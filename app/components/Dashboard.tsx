@@ -495,8 +495,13 @@ export default function Dashboard({ apiKey, onClearKey }: Props) {
 
       {/* Nav */}
       <nav
-        className="sticky top-0 z-20 px-4 py-3 glass"
-        style={{ borderRadius: 0, borderLeft: 0, borderRight: 0, borderTop: 0 }}
+        className="sticky top-0 z-20 px-4 py-3"
+        style={{
+          backgroundColor: "color-mix(in oklab, var(--parchment) 92%, transparent)",
+          backdropFilter: "blur(12px) saturate(1.4)",
+          WebkitBackdropFilter: "blur(12px) saturate(1.4)",
+          borderBottom: "1px solid var(--border-warm)",
+        }}
       >
         <div className="max-w-3xl mx-auto flex items-center justify-between gap-2">
           <h1
