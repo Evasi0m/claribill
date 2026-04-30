@@ -5,8 +5,9 @@ import {
   type PlatformRates,
 } from "./platform";
 
+// API key has its own storage layer (lib/apiKeyStorage) so it doesn't
+// share this module's plaintext-JSON convention.
 export const STORAGE_KEYS = {
-  apiKey: "CLARIBILL_API_KEY",
   costRate: "CLARIBILL_COST_RATE",
   platformRates: "CLARIBILL_PLATFORM_RATES",
   theme: "CLARIBILL_THEME",

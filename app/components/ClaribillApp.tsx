@@ -2,11 +2,10 @@
 
 import { useState, useEffect } from "react";
 import dynamic from "next/dynamic";
+import { loadApiKey, saveApiKey, clearApiKey } from "../lib/apiKeyStorage";
 
 const ApiKeySetup = dynamic(() => import("./ApiKeySetup"), { ssr: false });
 const Dashboard = dynamic(() => import("./Dashboard"), { ssr: false });
-
-const STORAGE_KEY = "CLARIBILL_API_KEY";
 
 export default function ClaribillApp() {
   const [apiKey, setApiKey] = useState<string | null>(null);
@@ -14,19 +13,19 @@ export default function ClaribillApp() {
 
   useEffect(() => {
     // Hydrate from localStorage after mount (SSR-safe) — intentional setState-in-effect
-    const stored = localStorage.getItem(STORAGE_KEY);
+    const stored = loadApiKey();
     // eslint-disable-next-line react-hooks/set-state-in-effect
     setApiKey(stored);
     setReady(true);
   }, []);
 
   const handleSaveKey = (key: string) => {
-    localStorage.setItem(STORAGE_KEY, key);
+    saveApiKey(key);
     setApiKey(key);
   };
 
   const handleClearKey = () => {
-    localStorage.removeItem(STORAGE_KEY);
+    clearApiKey();
     setApiKey(null);
   };
 
