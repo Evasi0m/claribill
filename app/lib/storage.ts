@@ -79,16 +79,27 @@ export function applyTheme(t: Theme) {
 
 /* ---------------- History ---------------- */
 
+// Module-level cache. addHistory/updateHistory/removeHistory previously each
+// re-read and re-parsed localStorage which can be 200×N entries with
+// thumbnails — N+1 work for any chained mutation. We invalidate on every
+// successful write below.
+let historyCache: HistoryEntry[] | null = null;
+
 export function loadHistory(): HistoryEntry[] {
   if (typeof window === "undefined") return [];
+  if (historyCache !== null) return historyCache;
   try {
     const raw = localStorage.getItem(STORAGE_KEYS.history);
-    if (!raw) return [];
+    if (!raw) {
+      historyCache = [];
+      return historyCache;
+    }
     const parsed = JSON.parse(raw) as HistoryEntry[];
-    if (!Array.isArray(parsed)) return [];
-    return parsed;
+    historyCache = Array.isArray(parsed) ? parsed : [];
+    return historyCache;
   } catch {
-    return [];
+    historyCache = [];
+    return historyCache;
   }
 }
 
@@ -97,6 +108,7 @@ export function saveHistory(list: HistoryEntry[]) {
   const trimmed = list.slice(0, HISTORY_LIMIT);
   try {
     localStorage.setItem(STORAGE_KEYS.history, JSON.stringify(trimmed));
+    historyCache = trimmed;
     return;
   } catch (err) {
     // QuotaExceededError — most weight comes from thumbnails. Drop them
@@ -108,11 +120,13 @@ export function saveHistory(list: HistoryEntry[]) {
     );
     try {
       localStorage.setItem(STORAGE_KEYS.history, JSON.stringify(stripped));
+      historyCache = stripped;
       return;
     } catch (err2) {
       if (!isQuotaError(err2)) throw err2;
       const allStripped = trimmed.map((e) => ({ ...e, thumbnails: undefined }));
       localStorage.setItem(STORAGE_KEYS.history, JSON.stringify(allStripped));
+      historyCache = allStripped;
     }
   }
 }
@@ -148,6 +162,7 @@ export function removeHistory(id: string): HistoryEntry[] {
 export function clearHistory() {
   if (typeof window === "undefined") return;
   localStorage.removeItem(STORAGE_KEYS.history);
+  historyCache = [];
 }
 
 export function newHistoryId(): string {

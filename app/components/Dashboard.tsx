@@ -62,7 +62,7 @@ import {
   downloadFile,
   exportNodeAsPng,
 } from "../lib/export";
-import { fmtShortDate, todayFilename } from "../lib/format";
+import { fmtMoney, fmtShortDate, todayFilename } from "../lib/format";
 
 interface Props {
   apiKey: string;
@@ -407,11 +407,7 @@ export default function Dashboard({ apiKey, onClearKey }: Props) {
     }
   };
 
-  const fmt = (n: number) =>
-    new Intl.NumberFormat("th-TH", {
-      minimumFractionDigits: 2,
-      maximumFractionDigits: 2,
-    }).format(n);
+  const fmt = fmtMoney;
 
   /* ------------- edit handlers ------------- */
 
@@ -1578,11 +1574,7 @@ function BigCard({
   onCommit?: (n: number) => void;
   readOnly?: boolean;
 }) {
-  const fmt = (n: number) =>
-    new Intl.NumberFormat("th-TH", {
-      minimumFractionDigits: 2,
-      maximumFractionDigits: 2,
-    }).format(n);
+  const fmt = fmtMoney;
   return (
     <div className="card p-4 sm:p-5 h-full transition-transform hover:-translate-y-0.5">
       <div className="flex items-center gap-2 mb-2.5">
@@ -1648,11 +1640,7 @@ function SmallCard({
   onCommit?: (n: number) => void;
   readOnly?: boolean;
 }) {
-  const fmt = (n: number) =>
-    new Intl.NumberFormat("th-TH", {
-      minimumFractionDigits: 2,
-      maximumFractionDigits: 2,
-    }).format(n);
+  const fmt = fmtMoney;
   const textColor = valueColor ?? "var(--text-primary)";
   return (
     <div className="card p-4 h-full flex items-center gap-3 transition-transform hover:-translate-y-0.5">

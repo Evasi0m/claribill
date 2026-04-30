@@ -17,7 +17,7 @@ import {
 import type { HistoryEntry, Platform } from "./types";
 import { PLATFORM_LABELS, PLATFORM_COLORS } from "../lib/platform";
 import { historyToCsv, downloadFile } from "../lib/export";
-import { fmtLongDate, todayFilename } from "../lib/format";
+import { fmtLongDate, fmtMoney, todayFilename } from "../lib/format";
 import { useModal } from "../lib/useModal";
 
 interface Props {
@@ -29,12 +29,7 @@ interface Props {
   onClearAll: () => void;
 }
 
-function fmt(n: number) {
-  return new Intl.NumberFormat("th-TH", {
-    minimumFractionDigits: 2,
-    maximumFractionDigits: 2,
-  }).format(n);
-}
+const fmt = fmtMoney;
 
 function monthKey(ts: number): string {
   const d = new Date(ts);

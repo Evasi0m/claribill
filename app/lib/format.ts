@@ -29,3 +29,15 @@ export function todayFilename(prefix: string, ext: string): string {
   const d = new Date();
   return `${prefix}-${d.getFullYear()}${pad(d.getMonth() + 1)}${pad(d.getDate())}-${pad(d.getHours())}${pad(d.getMinutes())}.${ext}`;
 }
+
+/** Shared Intl.NumberFormat — constructing one is non-trivial and we were
+ *  paying that cost on every render of every BigCard / SmallCard / FeeTable
+ *  row. Caching at module scope keeps it to a one-time hit. */
+const moneyFormatter = new Intl.NumberFormat("th-TH", {
+  minimumFractionDigits: 2,
+  maximumFractionDigits: 2,
+});
+
+export function fmtMoney(n: number): string {
+  return moneyFormatter.format(n);
+}
