@@ -1,3 +1,13 @@
+/** A bill image staged for upload — held in component state, not persisted
+ *  beyond the analysis call. `preview` is the dataURL for the <img> tag,
+ *  `base64` is the same payload sans prefix for the Gemini request. */
+export interface UploadedImage {
+  id: string;
+  preview: string;
+  base64: string;
+  mimeType: string;
+}
+
 export interface FeeItem {
   name: string;
   amount: number;
