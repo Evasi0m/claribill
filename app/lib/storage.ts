@@ -94,7 +94,36 @@ export function loadHistory(): HistoryEntry[] {
 export function saveHistory(list: HistoryEntry[]) {
   if (typeof window === "undefined") return;
   const trimmed = list.slice(0, HISTORY_LIMIT);
-  localStorage.setItem(STORAGE_KEYS.history, JSON.stringify(trimmed));
+  try {
+    localStorage.setItem(STORAGE_KEYS.history, JSON.stringify(trimmed));
+    return;
+  } catch (err) {
+    // QuotaExceededError — most weight comes from thumbnails. Drop them
+    // from the oldest entries first until the bundle fits, so freshly-
+    // saved entries keep their preview but old ones degrade gracefully.
+    if (!isQuotaError(err)) throw err;
+    const stripped = trimmed.map((e, i) =>
+      i < trimmed.length / 2 ? e : { ...e, thumbnails: undefined },
+    );
+    try {
+      localStorage.setItem(STORAGE_KEYS.history, JSON.stringify(stripped));
+      return;
+    } catch (err2) {
+      if (!isQuotaError(err2)) throw err2;
+      const allStripped = trimmed.map((e) => ({ ...e, thumbnails: undefined }));
+      localStorage.setItem(STORAGE_KEYS.history, JSON.stringify(allStripped));
+    }
+  }
+}
+
+function isQuotaError(err: unknown): boolean {
+  if (!(err instanceof Error)) return false;
+  return (
+    err.name === "QuotaExceededError" ||
+    err.name === "NS_ERROR_DOM_QUOTA_REACHED" ||
+    err.message.includes("quota") ||
+    err.message.includes("Quota")
+  );
 }
 
 export function addHistory(entry: HistoryEntry): HistoryEntry[] {

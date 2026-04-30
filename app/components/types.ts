@@ -34,4 +34,7 @@ export interface HistoryEntry {
   profit: number;
   /** How many source images */
   imageCount: number;
+  /** Tiny JPEG dataURLs (~64x64 each) — visual aid for skimming history.
+   *  Optional so older entries without thumbnails still load. */
+  thumbnails?: string[];
 }

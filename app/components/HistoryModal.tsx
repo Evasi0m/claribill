@@ -321,17 +321,63 @@ export default function HistoryModal({
                   style={{ animationDelay: `${Math.min(idx * 0.03, 0.4)}s` }}
                 >
                   <div className="flex items-start gap-3">
-                    {/* Platform swatch */}
-                    <div
-                      className="shrink-0 rounded-full mt-1"
-                      style={{
-                        width: 10,
-                        height: 10,
-                        backgroundColor: e.result.platform
-                          ? PLATFORM_COLORS[e.result.platform]
-                          : PLATFORM_COLORS.other,
-                      }}
-                    />
+                    {/* Thumbnail (when persisted) — falls back to a platform
+                        color swatch for older entries that have no images. */}
+                    {e.thumbnails && e.thumbnails.length > 0 ? (
+                      <div
+                        className="shrink-0 relative"
+                        style={{
+                          width: 40,
+                          height: 40,
+                          borderRadius: "calc(var(--radius) - 8px)",
+                          overflow: "hidden",
+                          border: "1px solid var(--border-warm)",
+                          backgroundColor: "var(--warm-sand)",
+                        }}
+                      >
+                        {/* eslint-disable-next-line @next/next/no-img-element */}
+                        <img
+                          src={e.thumbnails[0]}
+                          alt=""
+                          className="w-full h-full object-cover"
+                        />
+                        {e.thumbnails.length > 1 && (
+                          <span
+                            className="absolute bottom-0 right-0 text-[9px] px-1 leading-tight font-medium"
+                            style={{
+                              backgroundColor: "rgba(20,20,19,0.7)",
+                              color: "var(--ivory)",
+                              borderTopLeftRadius: "calc(var(--radius) - 12px)",
+                            }}
+                          >
+                            +{e.thumbnails.length - 1}
+                          </span>
+                        )}
+                        <span
+                          aria-hidden
+                          className="absolute top-1 left-1 rounded-full"
+                          style={{
+                            width: 6,
+                            height: 6,
+                            backgroundColor: e.result.platform
+                              ? PLATFORM_COLORS[e.result.platform]
+                              : PLATFORM_COLORS.other,
+                            boxShadow: "0 0 0 1.5px rgba(255,255,255,0.85)",
+                          }}
+                        />
+                      </div>
+                    ) : (
+                      <div
+                        className="shrink-0 rounded-full mt-1"
+                        style={{
+                          width: 10,
+                          height: 10,
+                          backgroundColor: e.result.platform
+                            ? PLATFORM_COLORS[e.result.platform]
+                            : PLATFORM_COLORS.other,
+                        }}
+                      />
+                    )}
                     <div className="min-w-0 flex-1">
                       <div className="flex items-center gap-2 flex-wrap">
                         <EditableTitle

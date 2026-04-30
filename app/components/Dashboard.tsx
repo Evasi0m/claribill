@@ -56,6 +56,7 @@ import {
 } from "../lib/platform";
 import { computeProfit } from "../lib/profit";
 import { applyBackup } from "../lib/backup";
+import { makeThumbnail } from "../lib/thumbnail";
 import {
   resultToCsv,
   downloadFile,
@@ -306,11 +307,25 @@ export default function Dashboard({ apiKey, onClearKey }: Props) {
 
   const openPicker = () => fileInputRef.current?.click();
 
-  const persistHistory = (res: AnalysisResult, imageCount: number) => {
+  const persistHistory = async (
+    res: AnalysisResult,
+    imageCount: number,
+    sources: UploadedImage[],
+  ) => {
     const costRate = rateFor(platformRates, res.platform);
     const { profit } = computeProfit(res, costRate);
     const datePart = fmtShortDate(Date.now());
     const platformLabel = res.platform ? PLATFORM_LABELS[res.platform] : "บิล";
+    // Thumbnail generation is best-effort — if any one source fails (oversize
+    // EXIF, unsupported codec on the device) we just drop that thumbnail
+    // rather than blocking the history save.
+    const thumbnails = (
+      await Promise.all(
+        sources.map((s) =>
+          makeThumbnail(s.preview).catch(() => null),
+        ),
+      )
+    ).filter((t): t is string => t !== null);
     const entry: HistoryEntry = {
       id: newHistoryId(),
       createdAt: Date.now(),
@@ -319,6 +334,7 @@ export default function Dashboard({ apiKey, onClearKey }: Props) {
       costRate,
       profit,
       imageCount,
+      thumbnails: thumbnails.length > 0 ? thumbnails : undefined,
     };
     const next = addHistory(entry);
     setHistory(next);
@@ -369,7 +385,7 @@ export default function Dashboard({ apiKey, onClearKey }: Props) {
       }
       const agg = aggregate(all);
       setResult(agg);
-      persistHistory(agg, images.length);
+      await persistHistory(agg, images.length, images);
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : "เกิดข้อผิดพลาดที่ไม่ทราบสาเหตุ";
       if (msg.includes("API_KEY_INVALID") || msg.includes("API key not valid")) {
