@@ -1,7 +1,6 @@
 "use client";
 
 import { useState, useCallback, useRef, useEffect } from "react";
-import { GoogleGenerativeAI } from "@google/generative-ai";
 import {
   Upload,
   Settings,
@@ -41,10 +40,11 @@ import {
   DEFAULT_COST_RATE,
   type PlatformRates,
 } from "../lib/platform";
-import { aggregate, recomputePercentages } from "../lib/aggregate";
-import { computeProfit } from "../lib/profit";
+import { recomputePercentages } from "../lib/aggregate";
+import { computeProfit, syncResultToHistory } from "../lib/profit";
 import { applyBackup } from "../lib/backup";
 import { makeThumbnail } from "../lib/thumbnail";
+import { useAnalyze } from "../lib/useAnalyze";
 import {
   resultToCsv,
   downloadFile,
@@ -57,55 +57,21 @@ interface Props {
   onClearKey: () => void;
 }
 
-const AI_MODELS = [
-  "gemini-2.5-flash",
-  "gemini-2.0-flash",
-  "gemini-2.0-flash-lite",
-  "gemini-flash-latest",
-  "gemini-1.5-flash",
-];
-
-const isRetryableError = (msg: string) =>
-  msg.includes("429") ||
-  msg.includes("quota") ||
-  msg.includes("Quota") ||
-  msg.includes("RESOURCE_EXHAUSTED") ||
-  msg.includes("prepayment credits") ||
-  msg.includes("404") ||
-  msg.includes("not found") ||
-  msg.includes("not supported") ||
-  msg.includes("500") ||
-  msg.includes("503");
-
-const PROMPT = `จงอ่านภาพใบแจ้งยอดขายสินค้าออนไลน์ และคืนค่าเป็น JSON เท่านั้น (ไม่ต้องมีข้อความอื่น) ที่ประกอบด้วย:
-{
-  "platform": <ชื่อแพลตฟอร์มที่ตรวจจับได้จากโลโก้/ชื่อ/สีของบิล: "shopee" | "lazada" | "tiktok" | "other" — หาไม่เจอให้ใส่ "other">,
-  "labelPrice": <ยอดรวมสินค้าก่อนหักส่วนลด (ราคาป้ายเต็ม) เป็นตัวเลข — หาบรรทัดที่เขียนว่า "ยอดรวมสินค้าก่อนหักส่วนลด" หรือคำใกล้เคียง หากไม่มีให้ใช้ค่าเดียวกับ grossSales>,
-  "grossSales": <ยอดขายหลังหักส่วนลดจากผู้ขาย (ยอดที่ลูกค้าจ่ายจริงก่อนหักค่าธรรมเนียม) เป็นตัวเลข>,
-  "totalFees": <ยอดรวมค่าธรรมเนียมทั้งหมด เป็นตัวเลข บวกเสมอ (ไม่ติดลบ)>,
-  "netAmount": <ยอดเงินสุทธิที่ผู้ขายได้รับหลังหักค่าธรรมเนียม เป็นตัวเลข>,
-  "feeItems": [
-    { "name": <ชื่อรายการ>, "amount": <จำนวนเงิน เป็นตัวเลข บวกเสมอ>, "percentage": <เปอร์เซ็นต์เมื่อเทียบกับ grossSales เป็นตัวเลข> }
-  ]
-}`;
-
 export default function Dashboard({ apiKey, onClearKey }: Props) {
   const [dragging, setDragging] = useState(false);
   const [images, setImages] = useState<UploadedImage[]>([]);
-  const [loading, setLoading] = useState(false);
-  const [progress, setProgress] = useState<{ current: number; total: number } | null>(null);
   const [result, setResult] = useState<AnalysisResult | null>(null);
   const [currentEntryId, setCurrentEntryId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [showSettings, setShowSettings] = useState(false);
   const [showHistory, setShowHistory] = useState(false);
-  const [activeModel, setActiveModel] = useState<string>(AI_MODELS[0]);
   // Dashboard is loaded via dynamic({ ssr: false }) so localStorage is safe at init
   const [platformRates, setPlatformRates] = useState<PlatformRates>(loadPlatformRates);
   const [theme, setTheme] = useState<Theme>(loadTheme);
   const [history, setHistory] = useState<HistoryEntry[]>(loadHistory);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const exportNodeRef = useRef<HTMLDivElement>(null);
+  const { loading, progress, activeModel, analyze } = useAnalyze(apiKey);
 
   // Apply theme to <html> element — side effect only, no state update
   useEffect(() => {
@@ -115,12 +81,11 @@ export default function Dashboard({ apiKey, onClearKey }: Props) {
   const handlePlatformRatesChange = (r: PlatformRates) => {
     setPlatformRates(r);
     savePlatformRates(r);
-    // Re-derive cost/profit live when user tweaks — result view reads from state directly
-    if (result && currentEntryId) {
-      const costRate = rateFor(r, result.platform);
-      const { profit } = computeProfit(result, costRate);
-      const next = updateHistory(currentEntryId, { costRate, profit });
-      setHistory(next);
+    // Re-derive cost/profit live when user tweaks — result view reads from
+    // state directly so we only need to push the new numbers into history.
+    if (result) {
+      const updatedHistory = syncResultToHistory(result, currentEntryId, r);
+      if (updatedHistory) setHistory(updatedHistory);
     }
   };
 
@@ -265,157 +230,77 @@ export default function Dashboard({ apiKey, onClearKey }: Props) {
 
   const handleAnalyze = async () => {
     if (images.length === 0) return;
-    setLoading(true);
     setError(null);
     setResult(null);
     setCurrentEntryId(null);
-    setProgress({ current: 0, total: images.length });
-
-    const genAI = new GoogleGenerativeAI(apiKey);
-
-    const analyzeOne = async (img: UploadedImage): Promise<AnalysisResult> => {
-      const imagePart = {
-        inlineData: { data: img.base64, mimeType: img.mimeType },
-      };
-      let lastError: unknown = null;
-      for (const modelName of AI_MODELS) {
-        try {
-          setActiveModel(modelName);
-          const model = genAI.getGenerativeModel({ model: modelName });
-          const response = await model.generateContent([PROMPT, imagePart]);
-          const text = response.response.text();
-          const jsonMatch = text.match(/\{[\s\S]*\}/);
-          if (!jsonMatch) throw new Error("ไม่พบข้อมูล JSON ในผลลัพธ์");
-          return JSON.parse(jsonMatch[0]) as AnalysisResult;
-        } catch (err: unknown) {
-          lastError = err;
-          const msg = err instanceof Error ? err.message : "";
-          if (msg.includes("API_KEY_INVALID") || msg.includes("API key not valid"))
-            throw err;
-          if (!isRetryableError(msg)) throw err;
-        }
-      }
-      throw lastError instanceof Error ? lastError : new Error("วิเคราะห์ไม่สำเร็จ");
-    };
-
     try {
-      const all: AnalysisResult[] = [];
-      for (let i = 0; i < images.length; i++) {
-        setProgress({ current: i + 1, total: images.length });
-        const r = await analyzeOne(images[i]);
-        all.push(r);
-      }
-      const agg = aggregate(all);
+      const agg = await analyze(images);
       setResult(agg);
       await persistHistory(agg, images.length, images);
-    } catch (err: unknown) {
-      const msg = err instanceof Error ? err.message : "เกิดข้อผิดพลาดที่ไม่ทราบสาเหตุ";
-      if (msg.includes("API_KEY_INVALID") || msg.includes("API key not valid")) {
-        setError("API Key ไม่ถูกต้อง กรุณาตรวจสอบและอัปเดตใน Settings");
+    } catch (err) {
+      // useAnalyze throws AnalyzeError-shaped objects. We only need the
+      // message + kind to decide which CTA to show.
+      const e = err as { kind?: string; message?: string };
+      setError(e.message ?? String(err));
+      if (e.kind === "apiKey") {
         // Auto-open Settings so the seller can fix the key without an
         // extra step. They've already hit a hard wall — don't make them
         // hunt for the gear icon.
         setShowSettings(true);
-      } else if (isRetryableError(msg)) {
-        setError(
-          `ลองทุกโมเดลแล้วไม่สำเร็จ (${AI_MODELS.join(", ")}) — โควต้าหมดหรือโมเดลไม่พร้อมใช้งาน กรุณารอสักครู่ เปลี่ยน API key หรือเปิด billing ใน Google AI Studio\n\nรายละเอียด: ${msg}`,
-        );
-      } else {
-        setError(`วิเคราะห์ไม่สำเร็จ: ${msg}`);
       }
-    } finally {
-      setLoading(false);
-      setProgress(null);
     }
   };
 
   /* ------------- edit handlers ------------- */
 
-  const updateResult = (patch: Partial<AnalysisResult>) => {
+  /** Apply a derivation function to the active result, recompute fee
+   *  percentages, and persist the change to the matching history entry.
+   *  Returning null from the derive callback aborts the mutation (used by
+   *  removeFeeItem to refuse deleting AI-extracted rows). */
+  const mutateResult = (
+    derive: (prev: AnalysisResult) => AnalysisResult | null,
+  ) => {
     setResult((prev) => {
       if (!prev) return prev;
-      const merged = recomputePercentages({ ...prev, ...patch });
-      if (currentEntryId) {
-        const costRate = rateFor(platformRates, merged.platform);
-        const { profit } = computeProfit(merged, costRate);
-        const next = updateHistory(currentEntryId, {
-          result: merged,
-          costRate,
-          profit,
-        });
-        setHistory(next);
-      }
+      const next = derive(prev);
+      if (next === null) return prev;
+      const merged = recomputePercentages(next);
+      const updatedHistory = syncResultToHistory(merged, currentEntryId, platformRates);
+      if (updatedHistory) setHistory(updatedHistory);
       return merged;
     });
   };
 
-  const updateFeeItem = (index: number, patch: Partial<FeeItem>) => {
-    setResult((prev) => {
-      if (!prev) return prev;
+  const updateResult = (patch: Partial<AnalysisResult>) =>
+    mutateResult((prev) => ({ ...prev, ...patch }));
+
+  const updateFeeItem = (index: number, patch: Partial<FeeItem>) =>
+    mutateResult((prev) => {
       const items = prev.feeItems.map((f, i) => (i === index ? { ...f, ...patch } : f));
-      // Recompute totalFees from items to keep things coherent
       const totalFees = items.reduce((s, f) => s + (Number(f.amount) || 0), 0);
-      const merged = recomputePercentages({ ...prev, feeItems: items, totalFees });
-      if (currentEntryId) {
-        const costRate = rateFor(platformRates, merged.platform);
-        const { profit } = computeProfit(merged, costRate);
-        const next = updateHistory(currentEntryId, {
-          result: merged,
-          costRate,
-          profit,
-        });
-        setHistory(next);
-      }
-      return merged;
+      return { ...prev, feeItems: items, totalFees };
     });
-  };
 
-  const addFeeItem = () => {
-    setResult((prev) => {
-      if (!prev) return prev;
+  const addFeeItem = () =>
+    mutateResult((prev) => {
       const items: FeeItem[] = [
         ...prev.feeItems,
         { name: "ค่าธรรมเนียมเพิ่มเติม", amount: 0, percentage: 0, userAdded: true },
       ];
       const totalFees = items.reduce((s, f) => s + (Number(f.amount) || 0), 0);
-      const merged = recomputePercentages({ ...prev, feeItems: items, totalFees });
-      if (currentEntryId) {
-        const costRate = rateFor(platformRates, merged.platform);
-        const { profit } = computeProfit(merged, costRate);
-        const next = updateHistory(currentEntryId, {
-          result: merged,
-          costRate,
-          profit,
-        });
-        setHistory(next);
-      }
-      return merged;
+      return { ...prev, feeItems: items, totalFees };
     });
-  };
 
-  const removeFeeItem = (index: number) => {
-    setResult((prev) => {
-      if (!prev) return prev;
+  const removeFeeItem = (index: number) =>
+    mutateResult((prev) => {
       const target = prev.feeItems[index];
       // Only remove items the seller added themselves — AI-extracted rows
       // stay locked so totalFees can't be silently understated.
-      if (!target?.userAdded) return prev;
+      if (!target?.userAdded) return null;
       const items = prev.feeItems.filter((_, i) => i !== index);
       const totalFees = items.reduce((s, f) => s + (Number(f.amount) || 0), 0);
-      const merged = recomputePercentages({ ...prev, feeItems: items, totalFees });
-      if (currentEntryId) {
-        const costRate = rateFor(platformRates, merged.platform);
-        const { profit } = computeProfit(merged, costRate);
-        const next = updateHistory(currentEntryId, {
-          result: merged,
-          costRate,
-          profit,
-        });
-        setHistory(next);
-      }
-      return merged;
+      return { ...prev, feeItems: items, totalFees };
     });
-  };
 
   const changePlatform = (p: Platform) => updateResult({ platform: p });
 

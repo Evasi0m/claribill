@@ -1,4 +1,6 @@
-import type { AnalysisResult } from "../components/types";
+import type { AnalysisResult, HistoryEntry } from "../components/types";
+import { rateFor, type PlatformRates } from "./platform";
+import { updateHistory } from "./storage";
 
 /** Cost basis used everywhere — when the bill doesn't surface a separate
  *  pre-discount price (Shopee/Lazada), we fall back to grossSales so the
@@ -39,4 +41,23 @@ export function computeProfit(
   const profit = result.netAmount - cost;
   const marginPct = basis > 0 ? (profit / basis) * 100 : 0;
   return { basis, cost, profit, marginPct };
+}
+
+/** Persist a result update to the matching history entry and return the new
+ *  history list. No-op when there's no active entry, so freshly-analyzed
+ *  bills (which are always saved before edits) and history-detached results
+ *  both work without branching at the call site. */
+export function syncResultToHistory(
+  merged: AnalysisResult,
+  currentEntryId: string | null,
+  platformRates: PlatformRates,
+): HistoryEntry[] | null {
+  if (!currentEntryId) return null;
+  const costRate = rateFor(platformRates, merged.platform);
+  const { profit } = computeProfit(merged, costRate);
+  return updateHistory(currentEntryId, {
+    result: merged,
+    costRate,
+    profit,
+  });
 }
